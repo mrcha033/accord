@@ -1,0 +1,16 @@
+id: "GEDI-2025-09-20"
+title: "Journal Protocol v1"
+rule: "condorcet"
+quorum: 0.6
+electorate:
+  - "AGENT-OPS01"
+  - "AGENT-PM01"
+  - "AGENT-ENG01"
+options:
+  A: "org/policy/norms/draft/journal-protocol.md"
+  B: "org/policy/norms/draft/journal-protocol-alt.md"
+proposal_materials:
+  - "org/policy/norms/draft/journal-protocol.md"
+window:
+  start: "2025-09-20T00:00:00Z"
+  end: "2025-09-21T00:00:00Z"
