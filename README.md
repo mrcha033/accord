@@ -14,6 +14,8 @@ cryptographically verifiable attestation.
   results.
 - **`scripts/runtime_guard.py`** – Runtime enforcement of `mcp_allow` endpoints
   and `fs_write_scopes` derived from an agent's ALOU definition.
+- **`orchestrator/onboarding.py`** – Materialises newly drafted ALOUs into prompts,
+  output scaffolds, and registry entries so agents can be recruited autonomously.
 - **`.github/workflows/provenance.yml`** – GitHub Actions gate that rebuilds and
   verifies every touched Markdown document on pull requests.
 - **`tests/`** – Pytest suite covering provenance handling, runtime guard rules,
@@ -130,6 +132,18 @@ The guard enforces:
 - MCP endpoints listed in `mcp_allow`
 - Filesystem write scopes listed in `fs_write_scopes`
 - No tilde, absolute, symlink, or base-escape paths.
+
+## Autonomous Hiring Flow
+
+1. Agents draft a candidate charter under `org/policy/**` using the ALOU template's
+   `runtime` block to specify prompt, output, and summary locations.
+2. When a GEDI ballot adopts the draft, the experiment loop invokes
+   `materialize_agent` to copy the charter into `org/_registry`, scaffold the
+   prompt (using `prompt_template` when provided), and create placeholder
+   artifacts.
+3. Subsequent experiment rounds load agent configurations directly from
+   registered ALOUs via `load_registered_agent_configs`, allowing the new role
+   to participate without manual wiring.
 
 ## CI Workflow
 

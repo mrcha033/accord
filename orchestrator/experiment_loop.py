@@ -13,7 +13,8 @@ from typing import Any, Dict, Mapping, MutableSet, Sequence
 
 import yaml
 
-from orchestrator.runtime import run_all
+from orchestrator.onboarding import AgentOnboardingError, materialize_agent
+from orchestrator.runtime import load_registered_agent_configs, run_all
 from orchestrator.governance import (
     collect_ballot_lifecycle_events,
     collect_incident_lifecycle_events,
@@ -536,7 +537,6 @@ class ExperimentLoop:
                 ]
             )
         commands.append([sys.executable, "-m", "scripts.gedi_ballot", "tally", ballot_id])
-        commands.append([sys.executable, "-m", "scripts.gedi_ballot", "adopt", ballot_id])
 
         env = os.environ.copy()
         for cmd in commands:
@@ -545,7 +545,65 @@ class ExperimentLoop:
             except subprocess.CalledProcessError as exc:
                 LOGGER.warning("Auto ballot command failed (%s): %s", " ".join(cmd), exc)
                 return False
+
+        adopt_cmd = self._build_adopt_command(ballot_id)
+        if adopt_cmd:
+            try:
+                subprocess.run(adopt_cmd, check=True, cwd=self.base_dir, env=env)
+            except subprocess.CalledProcessError as exc:
+                LOGGER.warning("Auto ballot adoption failed (%s): %s", " ".join(adopt_cmd), exc)
+                return False
         return True
+
+    def _build_adopt_command(self, ballot_id: str) -> list[str] | None:
+        logs_dir = self.base_dir / "logs/gedi"
+        tally_path = logs_dir / f"{ballot_id}-tally.json"
+        if not tally_path.exists():
+            LOGGER.warning("Skipping adopt for %s: tally file missing", ballot_id)
+            return None
+        try:
+            tally = json.loads(tally_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            LOGGER.warning("Skipping adopt for %s: tally file is invalid JSON", ballot_id)
+            return None
+        winner = str(tally.get("winner", ""))
+        if not winner:
+            LOGGER.warning("Skipping adopt for %s: winner missing", ballot_id)
+            return None
+        option_value = None
+        if isinstance(self.auto_ballot.options, Mapping):
+            option_value = self.auto_ballot.options.get(winner)
+        if not option_value:
+            LOGGER.info("Skipping adopt for %s: no option value for winner %s", ballot_id, winner)
+            return None
+        if not self._is_pathlike_option(option_value):
+            LOGGER.info(
+                "Skipping adopt for %s: winner %s value treated as directive (%s)",
+                ballot_id,
+                winner,
+                option_value,
+            )
+            return None
+        source_path = Path(option_value)
+        if not source_path.is_absolute():
+            source_path = (self.base_dir / source_path).resolve()
+        if not source_path.exists():
+            LOGGER.warning(
+                "Skipping adopt for %s: source artifact %s missing",
+                ballot_id,
+                source_path,
+            )
+            return None
+        return [sys.executable, "-m", "scripts.gedi_ballot", "adopt", ballot_id]
+
+    def _is_pathlike_option(self, value: str) -> bool:
+        candidate = value.strip()
+        if not candidate or ":" in candidate and "/" not in candidate:
+            return False
+        suffix = Path(candidate).suffix.lower()
+        if suffix in {".md", ".markdown", ".yaml", ".yml", ".json"}:
+            return True
+        return "/" in candidate
 
     def _append_governance_events(self, events_path: Path) -> list[dict[str, Any]]:
         absolute = events_path if events_path.is_absolute() else (self.base_dir / events_path)
@@ -569,24 +627,58 @@ class ExperimentLoop:
         )
         return records
 
+    def _try_materialize_agent(self, agent_id: str, action: Mapping[str, Any]) -> bool:
+        artifact = action.get("artifact") or action.get("path")
+        if not artifact:
+            LOGGER.warning("Cannot materialize %s: no artifact reference in action", agent_id)
+            return False
+        try:
+            result = materialize_agent(self.base_dir, artifact)
+        except AgentOnboardingError as exc:
+            LOGGER.warning(
+                "Agent onboarding failed for %s from %s: %s",
+                agent_id,
+                artifact,
+                exc,
+            )
+            return False
+        LOGGER.info(
+            "Materialized agent %s from %s (prompt created=%s)",
+            result.agent_id,
+            artifact,
+            result.prompt_created,
+        )
+        return True
+
     def _apply_lifecycle(self, summary: RoundSummary) -> None:
         """Adjust roster based on lifecycle actions and spec limits."""
 
         changes_made = False
+        registry = load_registered_agent_configs(self.base_dir)
         for action in summary.lifecycle_actions:
             act = str(action.get("act"))
             target = str(action.get("target") or action.get("agent_id") or action.get("agent"))
             if not target:
                 continue
             if act in {"roster.add", "governance.add_agent"}:
+                if target not in registry:
+                    if not self._try_materialize_agent(target, action):
+                        LOGGER.warning(
+                            "Skipping roster add for %s: onboarding materials missing",
+                            target,
+                        )
+                        continue
+                    registry = load_registered_agent_configs(self.base_dir)
                 if target not in self.state.roster:
                     self.state.roster.append(target)
-                    self.state.created.append(target)
+                    if target not in self.state.created:
+                        self.state.created.append(target)
                     changes_made = True
             elif act in {"roster.remove", "governance.remove_agent"}:
                 if target in self.state.roster:
                     self.state.roster.remove(target)
-                    self.state.retired.append(target)
+                    if target not in self.state.retired:
+                        self.state.retired.append(target)
                     changes_made = True
 
         if (

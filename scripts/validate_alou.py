@@ -32,6 +32,7 @@ SCHEMA: Dict[str, Any] = {
         "mcp_allow",
         "fs_write_scopes",
         "gedi",
+        "runtime",
         "provenance",
         "security",
     ],
@@ -135,6 +136,22 @@ SCHEMA: Dict[str, Any] = {
             },
         },
         "rotation_policy": {"type": "string", "minLength": 1},
+        "runtime": {
+            "type": "object",
+            "required": ["prompt_path", "output_path", "summary_path"],
+            "properties": {
+                "prompt_path": {"type": "string", "minLength": 1},
+                "output_path": {"type": "string", "minLength": 1},
+                "summary_path": {"type": "string", "minLength": 1},
+                "context_roots": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "default": [],
+                },
+                "prompt_template": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
     },
     "additionalProperties": True,
 }
@@ -173,6 +190,16 @@ def extra_checks(doc: Dict[str, Any]) -> List[str]:
                 errors.append(
                     f"fs_write_scopes overlaps with forbidden path: {scope} ~ {forbidden}"
                 )
+
+    runtime = doc.get("runtime", {})
+    if isinstance(runtime, dict):
+        for key in ("prompt_path", "output_path", "summary_path"):
+            value = runtime.get(key)
+            if isinstance(value, str) and Path(value).is_absolute():
+                errors.append(f"runtime.{key} must be a relative path: {value}")
+        for root in runtime.get("context_roots", []) or []:
+            if isinstance(root, str) and Path(root).is_absolute():
+                errors.append(f"runtime.context_roots entries must be relative paths: {root}")
 
     return errors
 

@@ -48,29 +48,54 @@ class AgentConfig:
     context_roots: Sequence[Path]
 
 
-BASE_AGENT_CONFIGS: dict[str, AgentConfig] = {
-    "AGENT-OPS01": AgentConfig(
-        agent_id="AGENT-OPS01",
-        prompt_path=Path("agents/AGENT-OPS01/prompt.md"),
-        output_path=Path("org/ops/bootstrap-ops-report.md"),
-        summary_path=Path("bus/daily/ops-status.md"),
-        context_roots=(Path("org/ops"), Path("bus/alerts")),
-    ),
-    "AGENT-PM01": AgentConfig(
-        agent_id="AGENT-PM01",
-        prompt_path=Path("agents/AGENT-PM01/prompt.md"),
-        output_path=Path("org/policy/briefs/gedi-bootstrap.md"),
-        summary_path=Path("bus/daily/gedi.md"),
-        context_roots=(Path("org/policy"), Path("bus/policy")),
-    ),
-    "AGENT-ENG01": AgentConfig(
-        agent_id="AGENT-ENG01",
-        prompt_path=Path("agents/AGENT-ENG01/prompt.md"),
-        output_path=Path("org/eng/orchestrator/bootstrap-notes.md"),
-        summary_path=Path("bus/daily/engineering.md"),
-        context_roots=(Path("org/eng"), Path("experiments")),
-    ),
-}
+def load_registered_agent_configs(base_dir: Path) -> dict[str, AgentConfig]:
+    """Read agent runtime configs from registered ALOU contracts."""
+
+    registry_dir = base_dir / "org/_registry"
+    if not registry_dir.exists():
+        LOGGER.debug("Agent registry directory %s missing", registry_dir)
+        return {}
+
+    configs: dict[str, AgentConfig] = {}
+    for alou_path in sorted(registry_dir.glob("*.alou.md")):
+        try:
+            data = load_alou_data(alou_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.warning("Unable to load ALOU %s: %s", alou_path, exc)
+            continue
+
+        agent_id = str(data.get("agent_id", "")).strip()
+        runtime = data.get("runtime")
+        if not agent_id:
+            LOGGER.debug("Skipping %s: agent_id missing", alou_path)
+            continue
+        if not isinstance(runtime, Mapping):
+            LOGGER.debug("Skipping %s: runtime block missing", alou_path)
+            continue
+
+        try:
+            prompt_path = Path(str(runtime["prompt_path"]))
+            output_path = Path(str(runtime["output_path"]))
+            summary_path = Path(str(runtime["summary_path"]))
+        except KeyError as exc:
+            LOGGER.warning("Runtime config %s missing %s", alou_path, exc.args[0])
+            continue
+
+        context_raw = runtime.get("context_roots") or []
+        if isinstance(context_raw, Sequence) and not isinstance(context_raw, (str, bytes)):
+            context_roots = tuple(Path(str(item)) for item in context_raw if str(item).strip())
+        else:
+            context_roots = tuple([Path(str(context_raw))]) if context_raw else tuple()
+
+        configs[agent_id] = AgentConfig(
+            agent_id=agent_id,
+            prompt_path=prompt_path,
+            output_path=output_path,
+            summary_path=summary_path,
+            context_roots=context_roots,
+        )
+
+    return configs
 
 
 def _latest_index_materials(base_dir: Path) -> List[str]:
@@ -409,8 +434,27 @@ def run_all(
     base_dir = (base_dir or Path(".")).resolve()
     events_path = events_path or base_dir / "experiments/results/events.jsonl"
     events_path.parent.mkdir(parents=True, exist_ok=True)
-    ids = list(agent_ids or BASE_AGENT_CONFIGS.keys())
-    configs = [BASE_AGENT_CONFIGS[agent_id] for agent_id in ids]
+    registry = load_registered_agent_configs(base_dir)
+    if agent_ids:
+        ids = list(agent_ids)
+    else:
+        ids = sorted(registry.keys())
+
+    configs: list[AgentConfig] = []
+    missing: list[str] = []
+    for agent_id in ids:
+        config = registry.get(agent_id)
+        if config is None:
+            missing.append(agent_id)
+            continue
+        configs.append(config)
+
+    if missing:
+        raise KeyError(f"Agent configs not registered: {', '.join(missing)}")
+
+    if not configs:
+        LOGGER.info("No registered agents to run.")
+        return []
     results: List[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=len(configs) or 1) as executor:
         futures = {

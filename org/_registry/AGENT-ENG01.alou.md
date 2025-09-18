@@ -16,6 +16,13 @@ expires: "NONE"
 capabilities: ["orchestrator_dev","experiment_runner","mcp_adapter"]
 mcp_allow: ["file","search","knowledge"]
 fs_write_scopes: ["org/eng/**","bus/inbox/**","bus/daily/**","experiments/results/**","attestations/AGENT-ENG01/**"]
+runtime:
+  prompt_path: "agents/AGENT-ENG01/prompt.md"
+  output_path: "org/eng/orchestrator/bootstrap-notes.md"
+  summary_path: "bus/daily/engineering.md"
+  context_roots:
+    - "org/eng"
+    - "experiments"
 data_classification: internal
 gedi:
   roles: ["voter"]

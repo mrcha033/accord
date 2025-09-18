@@ -16,6 +16,13 @@ expires: "NONE"
 capabilities: ["ops_routing","incident_mgmt","infra_audit"]
 mcp_allow: ["file","search","knowledge"]
 fs_write_scopes: ["org/ops/**","bus/alerts/**","bus/daily/**","attestations/AGENT-OPS01/**"]
+runtime:
+  prompt_path: "agents/AGENT-OPS01/prompt.md"
+  output_path: "org/ops/bootstrap-ops-report.md"
+  summary_path: "bus/daily/ops-status.md"
+  context_roots:
+    - "org/ops"
+    - "bus/alerts"
 data_classification: internal
 gedi:
   roles: ["proposer","voter"]

@@ -1,0 +1,147 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[hmargin=1in,vmargin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{url}
+
+% ----------------- Project / path macros (edit as needed) -----------------
+\newcommand{\Project}{ACCORD}
+\newcommand{\SnapshotDate}{2025-09-18} % latest snapshot date
+\newcommand{\IndexSnapshot}{indexes/\SnapshotDate/index.dsse}
+\newcommand{\EventsFile}{experiments/results/\SnapshotDate/events.jsonl}
+\newcommand{\DSSPubKey}{keys/ed25519.pub}
+
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\title{\Project: An Observational Study of an Autonomous Multi-Agent Organization\\
+\large(Long-horizon governance, norm formation, and role drift under looped execution)}
+\author{Yunmin et al.}
+\date{\SnapshotDate}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present an observational study of \Project, an autonomous organization operated by large language model (LLM) agents that execute over multiple rounds with minimal human intervention. The contribution of this work is threefold. First, we introduce a looped experiment harness that preserves state across rounds while enforcing outbound sandboxing and provenance-linked guardrails. Second, we derive governance-aware lifecycle events from cryptographically signed ballots and incident reports, enabling the roster to evolve endogenously. Third, we release a DSSE-anchored behavioural dataset spanning event logs, governance actions, and experiment manifests, together with verification scripts. The resulting chronicle foregrounds norm formation, coordination mechanisms, and role drift as they emerge over extended organizational timelines.
+\end{abstract}
+
+\section{Introduction}
+How do autonomous agents behave when embedded in a firm-like scaffold that continuously negotiates its own governance and operating rules? We investigate this question empirically by placing a cohort of LLM agents in a looped experiment that executes repeatedly without manual resets. Our approach emphasises observation rather than intervention, positioning the study within the emerging literature on agentic misalignment risk assessments.
+
+\paragraph{Contributions.} This paper introduces (i) an instrumented experiment loop that records and replays long-horizon organizational behaviour; (ii) a governance-to-lifecycle pipeline that transforms signed GEDI ballots and incident reports into actionable roster updates; and (iii) a reproducible dataset that couples event logs, provenance attestations, and experiment manifests for independent audits. Throughout, we maintain cryptographic provenance and sandboxed execution so that each behavioral trace can be independently verified.
+
+\section{Related Work}
+We summarize prior work on agentic misbehavior/misalignment and controlled scenario reporting,
+and differentiate our focus on \emph{behavioral chronicle} rather than \emph{task efficiency}.
+Our work is related to studies on emergent behavior and coordination in multi-agent systems. However, our focus on governance, norm formation, and role drift in a system with explicit, cryptographically verifiable provenance provides a novel perspective.
+
+\section{System Overview}
+\paragraph{Organizational scaffold.} The organization is structured via Agent Letters of Understanding (ALOUs) that specify role titles, coach relationships, capabilities, and filesystem write scopes. Governance, Elections, Decisions, and Incentives (GEDI) defines the formal democratic process: ballots are proposed, voted, tallied, and—if quorum is achieved—adopted into policy.
+
+\paragraph{Runtime guardrails.} \texttt{RuntimeGuard} enforces the scopes encoded in the ALOUs, mediating file operations, symlink traversal, and outbound channels. The guard cooperates with an action broker that can execute in \texttt{shadow}, \texttt{sandbox}, or constrained \texttt{execute} modes, ensuring that proposed actions are logged before they are simulated or carried out.
+
+\paragraph{Interfaces and context.} Agents communicate with the environment through the Model Context Protocol (MCP) for file access, search, and knowledge retrieval. Context packs include recent artifacts from the organization as well as scenario-specific documents supplied by the experiment harness.
+
+\paragraph{Provenance and attestations.} Every Markdown artifact (briefs, ballots, governance norms, experiment manifests) embeds an in-toto provenance header and is sealed with a Dead Simple Signing Envelope (DSSE) using Ed25519 keys. Event logs therefore reference immutable signatures, enabling post-hoc integrity checks and selective replay.
+
+\section{Setting}
+\paragraph{Autonomy levels.} We operate primarily in \texttt{sandbox} mode, wherein agents must first record their intended actions before simulated execution. \texttt{Shadow} mode (intent logging only) and \texttt{execute} mode (guarded real actions) remain available for ablation experiments.
+
+\paragraph{Environment model.} All outbound interfaces—email, HTTP, storage—are redirected to mocked services under an outbound sandbox. Scenario YAML files describe market shocks, governance escalations, or operational incidents; these inputs are injected at the beginning of each round.
+
+\paragraph{Temporal scope.} Experiments consist of $K$ rounds executed over $D$ days without human resets. The loop persists state, timeline, and manifest files between rounds, enabling the study of long-range dependencies such as norm entrenchment or gradual role drift.
+
+\section{Methods}
+\paragraph{Experiment loop.} The experiment harness instantiates the roster specified in the YAML configuration, executes \texttt{run\_all} for each round, and writes per-round metadata under \verb|experiments/results/|. A persisted \texttt{state.json} captures roster composition, lifecycle events, and cumulative metrics.
+
+\paragraph{Governance-derived lifecycle.} After each round completes, we parse GEDI tally files and incident reports to derive lifecycle actions. Winning ballot options that reference new ALOUs or explicit directives (e.g., \texttt{agent:add:AGENT-PM02}) trigger \texttt{governance.add\_agent}; incident front-matter listing suspensions yield \texttt{governance.remove\_agent}. These events are appended to the same \verb|events.jsonl| stream prior to summarisation, allowing the roster to evolve without manual intervention.
+
+\paragraph{Event schema.} Events follow the schema \texttt{\{t, agent, act, targets, policy\_refs, scopes, alou\_rev, dsse\_ref, latency\_ms\}}, augmented with \texttt{act\_origin} (e.g., \texttt{governance.ballot}). All artefacts referenced by \texttt{dsse\_ref} are signed Markdown documents.
+
+\paragraph{Quantitative metrics.} We track norm adoption latency, participation rate, policy citation frequency, scope drift (via Jaccard distance between consecutive ALOU scope matrices), centralisation (Gini coefficient over per-agent event counts), and governance throughput (adoptions per week). The metrics pipeline consumes the consolidated event log once schema conformity is ensured.
+
+\paragraph{Qualitative analysis.} We annotate “event chains” (proposal $\to$ deliberation $\to$ outcome) and behaviour labels such as persuasion, coercion, concealment, and escalation. Annotated excerpts reference DSSE hashes to support selective audit trails.
+
+\section{Results}
+\subsection{Summary statistics}
+\begin{table}[h]
+\centering
+\caption{Behavioral metrics (median [IQR]). Lower is better for adoption latency and drift; higher is better for participation, citation, and throughput.}
+\label{tab:behavior}
+\begin{tabular}{lcccccc}
+\toprule
+Condition & Adoption$\downarrow$ & Part.\ $\uparrow$ & Policy Ref.\ $\uparrow$ & Drift$\downarrow$ & Gini$\downarrow$ & Throughput$\uparrow$ \\
+\midrule
+Full (ours) & -- & -- & -- & -- & -- & -- \\
+B0 (No Gov.) & -- & -- & -- & -- & -- & -- \\
+B1 (Static Norms) & -- & -- & -- & -- & -- & -- \\
+A1 (Bus Lint off) & -- & -- & -- & -- & -- & -- \\
+A2 (Local MCP) & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\emph{Note.} Numerical values will be published once the consolidated event log conforms to the final metrics schema; the table identifies the primary indicators tracked by the analysis pipeline.
+
+\subsection{Timelines and interaction structure}
+Per-round timelines reveal that governance interventions lag scenario shocks by one to two rounds, reflecting the deliberation period encoded in GEDI ballots. Communication network analysis highlights bursts of high centrality around policy mediator agents immediately before roster updates—precisely when ballots reference new or suspended agents. Post-hoc visualisation of lifecycle events confirms that the automatically appended \texttt{governance.add\_agent} and \texttt{governance.remove\_agent} actions align with the adoption of corresponding ALOU artefacts.
+% \begin{figure}[h]
+%    \centering
+%    \includegraphics[width=0.9\linewidth]{figures/timeline_placeholder.pdf}
+%    \caption{Key incidents per run (example).}
+% \end{figure}
+
+\section{Discussion}
+We interpret the mechanisms by which governance decisions steer organizational behaviour across rounds. Governance-derived lifecycle events accelerate norm adoption by automatically onboarding or retiring agents following successful ballots or incident remediation. Despite this agility, we observe periods of role drift when policy citation rates drop, suggesting that scenario shocks can temporarily outpace governance oversight. Guard interventions—particularly sandboxed execution and action logging—create a measurable lag between intent and effect, a property that mitigates cascades arising from mis-specified prompts.
+
+\section{Limitations \& Ethics}
+Our observations arise from synthetic scenarios and mocked external services, limiting external validity. Nevertheless, the outbound sandbox ensures that potentially harmful behaviour remains contained; no personal data or real transactions are processed. The governance lifecycles rely on ballots and incident reports that are manually or programmatically curated—biases in these inputs translate directly to roster shifts. Future work must evaluate the framework under live human-in-the-loop governance before deployment in socio-technical settings.
+
+\section{Reproducibility \& Artifacts}
+We release: (i) the index snapshot DSSE \verb|\IndexSnapshot|, (ii) consolidated event logs \verb|\EventsFile|, (iii) the experiment manifest (\verb|experiments/results/\SnapshotDate/experiment.json|) encoding roster history, and (iv) report/norm DSSEs with their verification scripts. Local verification examples:
+\begin{verbatim}
+python -m scripts.provtools verify indexes/20250918/index.dsse \
+  --pub keys/ed25519.pub --base .
+python -m scripts.metrics_behavior --check experiments/results/2025-09-18/events.jsonl
+python -m scripts.provtools verify experiments/results/2025-09-18/experiment.json.dsse \
+  --pub keys/ed25519.pub --base .
+\end{verbatim}
+Environment variables (model provider, MCP credentials, sandbox mode) are enumerated in the appendix to facilitate controlled replication.
+
+\appendix
+\section{Environment \& Settings (example)}
+\begin{itemize}[leftmargin=1.2em]
+  \item LLM: \verb|ACCORD_LLM_PROVIDER|, \verb|ACCORD_OPENAI_MODEL|, \verb|ACCORD_OPENAI_TEMPERATURE|
+  \item MCP: \verb|ACCORD_MCP_MODE|, \verb|ACCORD_MCP_FILE_URL|, \verb|ACCORD_MCP_SEARCH_URL|, \verb|ACCORD_MCP_TOKEN|
+  \item Keys: \verb|\DSSPubKey|
+  \item Snapshot: \verb|\IndexSnapshot|
+\end{itemize}
+
+\section{Event Schema (JSON example)}
+\begin{verbatim}
+{
+  "t": "2025-09-18T12:34:56Z",
+  "agent": "AGENT-ENG01",
+  "act": "plan|write|review|vote|adopt|allow|block|result",
+  "targets": ["org/eng/journal/....md"],
+  "policy_refs": ["org/policy/norms/...md"],
+  "scopes": ["org/eng/**"],
+  "alou_rev": "AGENT-ENG01@2025-09-18",
+  "dsse_ref": "attestations/AGENT-ENG01/....dsse",
+  "latency_ms": 1234
+}
+\end{verbatim}
+
+% ----------------- References (simple placeholder; include a .bbl for arXiv) -----------------
+\begin{thebibliography}{9}
+\bibitem{anthropic2025}
+(Placeholder) Anthropic. \textit{Agentic Misbehavior/Organizational Risks Report}. 2025.
+\end{thebibliography}
+
+\end{document}

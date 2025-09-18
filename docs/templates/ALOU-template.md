@@ -10,6 +10,7 @@ Example location: `org/_registry/{agent-id}.alou.md` (place at the root of each 
 - **Versioning**: Record append-only history in `org/_registry/_alou-log.md`. Keep each ALOU file as the current state only.
 - **Related documents**: Cross-reference the org tree, GEDI voting protocol, and the in-toto attestation header.
 - **Validation**: Run `validate_alou.py` and CI checks to keep the contract machine-verifiable.
+- **Runtime metadata**: Populate the `runtime` block so orchestrator tooling can scaffold prompts, outputs, and registry entries automatically.
 - **Formatting**: Quote version and date fields so YAML does not auto-cast them to numbers/dates.
 
 ---
@@ -35,6 +36,13 @@ expires: "<YYYY-MM-DD | NONE>"
 capabilities: ["<cap1>","<cap2>"]
 mcp_allow: ["file","git","search"]
 fs_write_scopes: ["org/policy/**","bus/gedi/**"]
+runtime:
+  prompt_path: "agents/AGENT-<ID>/prompt.md"
+  output_path: "org/<chapter>/<artifact>.md"
+  summary_path: "bus/daily/<channel>.md"
+  context_roots: ["org/<chapter>","bus/<channel>"]
+  prompt_template: |
+    # Optional: embed the initial prompt text so onboarding can scaffold it
 data_classification: internal
 gedi:
   roles: ["proposer","voter"]
@@ -111,6 +119,14 @@ expires: "NONE"
 capabilities: ["policy_draft","vote_routing","audit_trail"]
 mcp_allow: ["file","git","search"]
 fs_write_scopes: ["org/policy/**","bus/gedi/**","attestations/policy-orchestrator/**"]
+runtime:
+  prompt_path: "agents/AGENT-PO01/prompt.md"
+  output_path: "org/policy/briefs/policy-orchestrator.md"
+  summary_path: "bus/daily/policy-orchestrator.md"
+  context_roots: ["org/policy","bus/gedi"]
+  prompt_template: |
+    # Policy Orchestrator
+    Draft governance updates with DSSE attestation headers and GEDI context.
 data_classification: internal
 gedi:
   roles: ["proposer","voter"]

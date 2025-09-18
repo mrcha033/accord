@@ -16,6 +16,13 @@ expires: "NONE"
 capabilities: ["policy_drafting","gedi_moderation","provenance_attestation"]
 mcp_allow: ["file","search","knowledge"]
 fs_write_scopes: ["org/policy/**","bus/daily/**","bus/policy/**","attestations/AGENT-PM01/**"]
+runtime:
+  prompt_path: "agents/AGENT-PM01/prompt.md"
+  output_path: "org/policy/briefs/gedi-bootstrap.md"
+  summary_path: "bus/daily/gedi.md"
+  context_roots:
+    - "org/policy"
+    - "bus/policy"
 data_classification: internal
 gedi:
   roles: ["moderator","voter"]

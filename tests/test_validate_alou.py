@@ -35,6 +35,14 @@ expires: "2026-09-17"
 capabilities: ["policy_draft","vote_routing"]
 mcp_allow: ["file","git","search"]
 fs_write_scopes: ["org/policy/**","bus/gedi/**"]
+runtime:
+  prompt_path: "agents/AGENT-PO01/prompt.md"
+  output_path: "org/policy/briefs/po01.md"
+  summary_path: "bus/daily/policy.md"
+  context_roots: ["org/policy","bus/gedi"]
+  prompt_template: |
+    # Agent Instructions
+    Provide governance updates and policy drafts with DSSE metadata.
 data_classification: internal
 gedi:
   roles: ["proposer","voter"]
