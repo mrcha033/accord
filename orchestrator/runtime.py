@@ -59,6 +59,20 @@ BASE_AGENT_CONFIGS: dict[str, AgentConfig] = {
 }
 
 
+def _latest_index_materials(base_dir: Path) -> List[str]:
+    latest_file = base_dir / "indexes/latest.json"
+    if not latest_file.exists():
+        return []
+    try:
+        data = json.loads(latest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    snapshot = data.get("snapshot")
+    if not snapshot:
+        return []
+    return [snapshot]
+
+
 def collect_context(base_dir: Path, roots: Iterable[Path], limit: int = 5) -> List[str]:
     resolved_roots = [((base_dir / root) if not root.is_absolute() else root).resolve() for root in roots]
     documents: list[tuple[float, Path]] = []
@@ -191,6 +205,7 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
         raise RuntimeError(f"LLM invocation failed for {config.agent_id}: {exc}") from exc
 
     output_path = config.output_path
+    snapshot_refs = _latest_index_materials(base_dir)
     artifact_body = compose_document(
         artifact_path=output_path,
         agent_id=config.agent_id,
@@ -198,7 +213,11 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
         coach_agent=alou_data.get("coach_agent", "NONE"),
         predicate_type="https://accord.ai/schemas/agent-report@v1",
         body=draft,
-        materials=[str(config.prompt_path), *[str(ref) for ref in knowledge_refs]],
+        materials=[
+            str(config.prompt_path),
+            *[str(ref) for ref in knowledge_refs],
+            *snapshot_refs,
+        ],
     )
     guard.fs.write_text(output_path, artifact_body)
 
@@ -210,7 +229,7 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
         coach_agent=alou_data.get("coach_agent", "NONE"),
         predicate_type="https://accord.ai/schemas/bus-summary@v1",
         body=summary,
-        materials=[],
+        materials=snapshot_refs,
     )
     guard.fs.write_text(config.summary_path, summary_body)
 
