@@ -1,0 +1,15 @@
+repos:
+  - repo: local
+    hooks:
+      - id: validate-alou
+        name: Validate ALOU contracts
+        entry: python scripts/validate_alou.py
+        language: system
+        types: [file]
+        files: "\\.alou\\.md$"
+      - id: pytest
+        name: pytest
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true

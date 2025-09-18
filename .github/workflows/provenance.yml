@@ -1,0 +1,126 @@
+name: provenance
+
+on:
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  attest-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Determine changed Markdown files
+        id: diff
+        run: |
+          . .venv/bin/activate
+          BASE="${{ github.base_ref }}"
+          if [ -z "$BASE" ]; then BASE="origin/main"; fi
+          git fetch --depth=100 origin "$BASE" || true
+          FILES=$(git diff --name-only "origin/${{ github.base_ref }}"... | grep -E '\.md$' || true)
+          {
+            echo "FILES<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and verify provenance
+        id: prov
+        env:
+          FILES: ${{ steps.diff.outputs.FILES }}
+        run: |
+          . .venv/bin/activate
+          python - <<'PY'
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+files = [f.strip() for f in (os.environ.get("FILES") or "").splitlines() if f.strip()]
+summary = {"ok": True, "items": []}
+
+if files:
+    pathlib.Path("attestations/ci").mkdir(parents=True, exist_ok=True)
+
+for fpath in files:
+    text = pathlib.Path(fpath).read_text(encoding="utf-8", errors="ignore")
+    if "<!--" not in text or "provenance:" not in text:
+        continue
+
+    out_path = pathlib.Path("attestations/ci") / (fpath.replace("/", "_") + ".dsse")
+    cmd = [
+        sys.executable,
+        "-m",
+        "scripts.policy_synth_pipeline",
+        fpath,
+        "keys/ed25519.key",
+        str(out_path),
+        "--base-dir",
+        ".",
+    ]
+    proc = subprocess.run(cmd, text=True, capture_output=True)
+
+    try:
+        payload = json.loads(proc.stdout.strip() or "{}")
+    except json.JSONDecodeError:
+        payload = {
+            "ok": False,
+            "error": "non-json output",
+            "raw": proc.stdout[-400:],
+        }
+
+    summary["items"].append(
+        {
+            "file": fpath,
+            "returncode": proc.returncode,
+            "stdout": payload,
+            "stderr": proc.stderr[-400:],
+        }
+    )
+
+    verify = payload.get("verify", {}) if isinstance(payload, dict) else {}
+    summary["ok"] &= (
+        proc.returncode == 0
+        and verify.get("signature_ok")
+        and verify.get("schema_ok")
+        and verify.get("digest_ok")
+    )
+
+summary_path = pathlib.Path("attestations/ci/summary.json")
+summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+print(json.dumps(summary, ensure_ascii=False))
+
+if not summary["ok"]:
+    sys.exit(1)
+PY
+
+      - name: Upload provenance summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-summary
+          path: attestations/ci/summary.json
+
+      - name: Notify Slack on failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          msg=$(jq -r '"Provenance gate failed\n" + ( .items | map(.file + " : " + (.stdout.verify|tostring)) | join("\n"))' attestations/ci/summary.json)
+          curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"$msg\"}" "$SLACK_WEBHOOK_URL"
