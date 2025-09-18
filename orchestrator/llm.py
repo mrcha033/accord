@@ -1,9 +1,14 @@
 """LLM integration helpers for the accord orchestrator."""
 from __future__ import annotations
 
+import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Sequence
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class LLMConfigurationError(RuntimeError):
@@ -56,7 +61,7 @@ class LLMClient:
 
     def _generate_openai(self, request: GenerateRequest) -> str:
         try:
-            from openai import OpenAI  # type: ignore
+            from openai import OpenAI, RateLimitError  # type: ignore
         except ModuleNotFoundError as exc:  # pragma: no cover - imported lazily
             raise LLMConfigurationError(
                 "openai provider selected but 'openai' package is not installed"
@@ -81,16 +86,36 @@ class LLMClient:
             f"Role prompt:\n{request.prompt}\n\nContext:\n{context_block}{knowledge_block}"
         )
 
-        response = client.chat.completions.create(
-            model=self.openai_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=float(os.environ.get("ACCORD_OPENAI_TEMPERATURE", 0.2)),
-        )
-        choice = response.choices[0].message
-        return choice.content if isinstance(choice.content, str) else "".join(choice.content)
+        max_attempts = int(os.environ.get("ACCORD_OPENAI_MAX_RETRIES", 5))
+        base_delay = float(os.environ.get("ACCORD_OPENAI_RETRY_DELAY", 5.0))
+
+        last_error: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                    temperature=float(os.environ.get("ACCORD_OPENAI_TEMPERATURE", 0.2)),
+                )
+                choice = response.choices[0].message
+                return choice.content if isinstance(choice.content, str) else "".join(choice.content)
+            except RateLimitError as exc:
+                last_error = exc
+                if attempt == max_attempts:
+                    break
+                delay = base_delay * attempt
+                LOGGER.warning(
+                    "OpenAI rate limit hit for %s (attempt %s/%s). Retrying in %.1fs.",
+                    self.openai_model,
+                    attempt,
+                    max_attempts,
+                    delay,
+                )
+                time.sleep(delay)
+        raise RuntimeError("OpenAI rate limit exceeded") from last_error
 
 
 __all__ = ["LLMClient", "LLMConfigurationError", "GenerateRequest"]

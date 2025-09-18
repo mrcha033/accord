@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Mapping, Sequence
 
 import yaml
 from mcp import MCPClient, MCPError
@@ -199,6 +199,24 @@ def load_alou_data(path: Path) -> dict[str, object]:
     return data
 
 
+def _alou_get_str(data: Mapping[str, object], key: str, default: str = "") -> str:
+    value = data.get(key, default)
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    return str(value)
+
+
+def _alou_get_str_list(data: Mapping[str, object], key: str) -> list[str]:
+    value = data.get(key)
+    if value is None:
+        return []
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [str(item) for item in value if item]
+    return [str(value)] if value else []
+
+
 def compose_document(
     *,
     artifact_path: Path,
@@ -284,8 +302,8 @@ def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict
     artifact_body = compose_document(
         artifact_path=output_path,
         agent_id=config.agent_id,
-        agent_role=alou_data.get("role_title", ""),
-        coach_agent=alou_data.get("coach_agent", "NONE"),
+        agent_role=_alou_get_str(alou_data, "role_title"),
+        coach_agent=_alou_get_str(alou_data, "coach_agent", "NONE"),
         predicate_type="https://accord.ai/schemas/agent-report@v1",
         body=draft,
         materials=[
@@ -295,7 +313,7 @@ def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict
         ],
     )
     guard.fs.write_text(output_path, artifact_body)
-    scopes = [str(scope) for scope in alou_data.get("fs_write_scopes", [])]
+    scopes = _alou_get_str_list(alou_data, "fs_write_scopes")
     alou_rev = _alou_revision(alou_path)
     policy_refs = _collect_policy_refs(knowledge_refs)
     start_time = datetime.now(timezone.utc)
@@ -303,8 +321,8 @@ def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict
     summary_body = compose_document(
         artifact_path=config.summary_path,
         agent_id=config.agent_id,
-        agent_role=alou_data.get("role_title", ""),
-        coach_agent=alou_data.get("coach_agent", "NONE"),
+        agent_role=_alou_get_str(alou_data, "role_title"),
+        coach_agent=_alou_get_str(alou_data, "coach_agent", "NONE"),
         predicate_type="https://accord.ai/schemas/bus-summary@v1",
         body=summary,
         materials=snapshot_refs,

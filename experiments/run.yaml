@@ -17,3 +17,11 @@ bus:
   summaries: daily
 outputs:
   root: experiments/results/2025-09-18
+timeline:
+  max_rounds: 100
+  cadence_minutes: null
+  resume: true
+lifecycle:
+  max_agents: 100
+  probation_rounds: 1
+  evaluation_window: 3

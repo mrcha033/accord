@@ -1,4 +1,4 @@
-"""Experiment runner that coordinates orchestrator executions and captures provenance artifacts."""
+"""Experiment runner coordinating multi-round orchestrator executions."""
 from __future__ import annotations
 
 import argparse
@@ -6,19 +6,23 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Mapping, Sequence
 
 import yaml
 
-from orchestrator.runtime import run_all
+from orchestrator.experiment_loop import (
+    ExperimentLoop,
+    LifecycleSpec,
+    TimelineSpec,
+)
 from scripts.policy_synth_pipeline import PipelineError, run_pipeline
 from scripts.runtime_guard import RuntimeGuard, ScopeError
 
 LOGGER = logging.getLogger(__name__)
 
-@dataclass
+
+@dataclass(slots=True)
 class ExperimentSpec:
     seed: int
     tasks: list[str]
@@ -27,6 +31,8 @@ class ExperimentSpec:
     context: dict[str, Any]
     bus: dict[str, Any]
     outputs: dict[str, Any]
+    timeline: TimelineSpec
+    lifecycle: LifecycleSpec
 
 
 DEFAULT_SPEC_PATH = Path("experiments/run.yaml")
@@ -36,6 +42,8 @@ DEFAULT_PRIVATE_KEY = Path("keys/ed25519.key")
 
 def load_spec(path: Path) -> ExperimentSpec:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    timeline = TimelineSpec.from_mapping(data.get("timeline"))
+    lifecycle = LifecycleSpec.from_mapping(data.get("lifecycle"))
     return ExperimentSpec(
         seed=int(data.get("seed", 0)),
         tasks=list(data.get("tasks", [])),
@@ -44,66 +52,48 @@ def load_spec(path: Path) -> ExperimentSpec:
         context=dict(data.get("context", {})),
         bus=dict(data.get("bus", {})),
         outputs=dict(data.get("outputs", {})),
+        timeline=timeline,
+        lifecycle=lifecycle,
     )
 
 
-def write_results(
+def _build_metadata(spec: ExperimentSpec) -> dict[str, Any]:
+    return {
+        "tasks": spec.tasks,
+        "agents": spec.agents,
+        "governance": spec.governance,
+        "context": spec.context,
+        "bus": spec.bus,
+    }
+
+
+def _attest_artifact(
     *,
     guard: RuntimeGuard,
-    root: Path,
-    metadata: Dict[str, Any],
-    agent_runs: Sequence[Dict[str, Any]],
-) -> Path:
-    root_relative = Path(root.relative_to(guard.fs.base_dir)) if hasattr(guard.fs, "base_dir") else root
-    guard.fs.write_text(root_relative / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
-
-    events_path = root_relative / "events.jsonl"
-    if not (guard.fs.base_dir / events_path if hasattr(guard.fs, "base_dir") else events_path).exists():
-        rows: list[dict[str, Any]] = []
-        for run in agent_runs:
-            event = {
-                "t": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "agent": run["agent_id"],
-                "act": "write",
-                "targets": [run["output"], run["summary"]],
-                "policy_refs": [],
-                "scopes": [],
-                "dsse_ref": run["attestation"],
-            }
-            rows.append(event)
-        guard.fs.write_text(events_path, "\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
-
-    csv_path = root_relative / "results.csv"
-    csv_lines = ["agent_id,artifact,summary,attestation"]
-    for run in agent_runs:
-        csv_lines.append(
-            ",".join(
-                [
-                    run["agent_id"],
-                    run["output"],
-                    run["summary"],
-                    run["attestation"],
-                ]
-            )
-        )
-    guard.fs.write_text(csv_path, "\n".join(csv_lines))
-
-    return events_path
-
-
-def _attest_results(root: Path, guard: RuntimeGuard, private_key: Path) -> None:
-    base_dir = guard.fs.base_dir if hasattr(guard.fs, "base_dir") else Path(".").resolve()
-    artifact = root / "metadata.json"
+    private_key: Path,
+    artifact: Path,
+    base_dir: Path,
+    key_id: str,
+    spec_path: Path,
+) -> None:
     if not artifact.exists():
-        LOGGER.info("metadata.json not found under %s; skipping attestation", root)
+        LOGGER.info("Artifact %s not found; skipping attestation", artifact)
         return
 
-    relative_artifact = artifact.relative_to(base_dir)
-    sidecar_relative = relative_artifact.with_suffix(".prov.md")
     provider = os.environ.get("ACCORD_LLM_PROVIDER", "mock")
     model = os.environ.get("ACCORD_OPENAI_MODEL", "mock")
     temperature = os.environ.get("ACCORD_OPENAI_TEMPERATURE", "0")
 
+    try:
+        relative_artifact = artifact.relative_to(base_dir)
+    except ValueError:
+        LOGGER.warning("Artifact %s is outside base_dir; skipping attestation", artifact)
+        return
+    sidecar_relative = relative_artifact.with_suffix(".prov.md")
+    try:
+        spec_relative = spec_path.relative_to(base_dir)
+    except ValueError:
+        spec_relative = spec_path
     sidecar_content = (
         "<!--\n"
         f"provenance:\n"
@@ -125,9 +115,7 @@ def _attest_results(root: Path, guard: RuntimeGuard, private_key: Path) -> None:
         f"          model: \"{model}\"\n"
         f"          temperature: \"{temperature}\"\n"
         f"    materials:\n"
-        f"      - name: \"docs/index.jsonl\"\n"
-        f"        digest: {{}}\n"
-        f"      - name: \"experiments/run.yaml\"\n"
+        f"      - name: \"{spec_relative.as_posix()}\"\n"
         f"        digest: {{}}\n"
         "-->\n"
     )
@@ -144,19 +132,18 @@ def _attest_results(root: Path, guard: RuntimeGuard, private_key: Path) -> None:
             artifact=sidecar_relative,
             private_key=private_key,
             attestation=attestation_relative,
-            key_id="AGENT-ENG01-experiments",
+            key_id=key_id,
             base_dir=base_dir,
         )
         LOGGER.info(
-            "Generated metadata attestation at %s using sidecar %s",
-            attestation_relative,
+            "Generated attestation for %s using sidecar %s",
+            relative_artifact,
             sidecar_relative,
         )
     except FileNotFoundError:
-        # Keys absent locally; skip silently for developer convenience
-        LOGGER.debug("Provenance key missing; skipping metadata attestation")
+        LOGGER.debug("Provenance key missing; skipping attestation")
     except PipelineError as exc:
-        LOGGER.warning("Metadata attestation failed: %s", exc)
+        LOGGER.warning("Attestation failed for %s: %s", relative_artifact, exc)
 
 
 def run_experiment(
@@ -172,36 +159,46 @@ def run_experiment(
     guard = RuntimeGuard.from_alou(alou_path, base_dir=base_dir)
 
     output_root = base_dir / spec.outputs.get("root", "experiments/results/bootstrap")
-    events_path = output_root / "events.jsonl"
-    if events_path.exists():
-        events_path.unlink()
-    events_path.parent.mkdir(parents=True, exist_ok=True)
-    results = run_all(spec.agents or None, base_dir=base_dir, events_path=events_path)
-    metadata = {
-        "seed": spec.seed,
-        "tasks": spec.tasks,
-        "agents": spec.agents,
-        "governance": spec.governance,
-        "context": spec.context,
-        "bus": spec.bus,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
+    spec_metadata = _build_metadata(spec)
 
-    events_path = write_results(
+    loop = ExperimentLoop(
+        base_dir=base_dir,
         guard=guard,
-        root=output_root,
-        metadata=metadata,
-        agent_runs=results,
+        output_root=output_root,
+        timeline=spec.timeline,
+        lifecycle=spec.lifecycle,
+        seed=spec.seed,
+        spec_metadata=spec_metadata,
     )
+    loop_result = loop.run()
 
     if attest:
-        _attest_results(output_root, guard, private_key)
+        _attest_artifact(
+            guard=guard,
+            private_key=private_key,
+            artifact=Path(loop_result["state_path"]),
+            base_dir=base_dir,
+            key_id="AGENT-ENG01-experiment-state",
+            spec_path=spec_path,
+        )
+        _attest_artifact(
+            guard=guard,
+            private_key=private_key,
+            artifact=Path(loop_result["timeline_path"]),
+            base_dir=base_dir,
+            key_id="AGENT-ENG01-experiment-timeline",
+            spec_path=spec_path,
+        )
+        _attest_artifact(
+            guard=guard,
+            private_key=private_key,
+            artifact=Path(loop_result["manifest_path"]),
+            base_dir=base_dir,
+            key_id="AGENT-ENG01-experiment-manifest",
+            spec_path=spec_path,
+        )
 
-    return {
-        "metadata": str(output_root / "metadata.json"),
-        "events": str(events_path),
-        "results": str(output_root / "results.csv"),
-    }
+    return loop_result
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -209,7 +206,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH, help="Experiment YAML spec path")
     parser.add_argument("--alou", type=Path, default=DEFAULT_ALOU, help="ALOU file for guard configuration")
     parser.add_argument("--base-dir", type=Path, default=Path(".").resolve(), help="Project root")
-    parser.add_argument("--attest", action="store_true", help="Run DSSE attestation on outputs if keys exist")
+    parser.add_argument("--attest", action="store_true", help="Run DSSE attestations if keys exist")
     return parser.parse_args(argv)
 
 
