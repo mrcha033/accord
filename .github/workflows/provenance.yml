@@ -119,6 +119,16 @@ jobs:
               sys.exit(1)
           PY
 
+      - name: Verify result DSSE (experiments/)
+        run: |
+          . .venv/bin/activate
+          if find experiments/results -name '*.dsse' | grep -q . ; then
+            find experiments/results -name '*.dsse' -print0 | \
+              xargs -0 -I{} python -m scripts.provtools verify {} --pub keys/ed25519.pub --base .
+          else
+            echo "No result DSSE found under experiments/results (skipping)."
+          fi
+
       - name: Upload provenance summary
         if: always()
         uses: actions/upload-artifact@v4
