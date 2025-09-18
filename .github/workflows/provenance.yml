@@ -36,6 +36,11 @@ jobs:
           . .venv/bin/activate
           python -m scripts.provtools keygen --out keys
 
+      - name: Lint bus messages
+        run: |
+          . .venv/bin/activate
+          python -m scripts.lint_bus
+
       - name: Determine changed Markdown files
         id: diff
         run: |
