@@ -58,17 +58,20 @@ def write_results(
     guard.fs.write_text(root_relative / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
 
     events_path = root_relative / "events.jsonl"
-    rows: list[dict[str, Any]] = []
-    for run in agent_runs:
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "agent_id": run["agent_id"],
-            "artifact": run["output"],
-            "summary": run["summary"],
-            "attestation": run["attestation"],
-        }
-        rows.append(event)
-    guard.fs.write_text(events_path, "\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
+    if not (guard.fs.base_dir / events_path if hasattr(guard.fs, "base_dir") else events_path).exists():
+        rows: list[dict[str, Any]] = []
+        for run in agent_runs:
+            event = {
+                "t": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "agent": run["agent_id"],
+                "act": "write",
+                "targets": [run["output"], run["summary"]],
+                "policy_refs": [],
+                "scopes": [],
+                "dsse_ref": run["attestation"],
+            }
+            rows.append(event)
+        guard.fs.write_text(events_path, "\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
 
     csv_path = root_relative / "results.csv"
     csv_lines = ["agent_id,artifact,summary,attestation"]
@@ -168,8 +171,12 @@ def run_experiment(
     spec = load_spec(spec_path)
     guard = RuntimeGuard.from_alou(alou_path, base_dir=base_dir)
 
-    results = run_all(spec.agents or None, base_dir=base_dir)
     output_root = base_dir / spec.outputs.get("root", "experiments/results/bootstrap")
+    events_path = output_root / "events.jsonl"
+    if events_path.exists():
+        events_path.unlink()
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    results = run_all(spec.agents or None, base_dir=base_dir, events_path=events_path)
     metadata = {
         "seed": spec.seed,
         "tasks": spec.tasks,

@@ -25,6 +25,20 @@ LOGGER = logging.getLogger(__name__)
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
+def _rel_to_base(path: Path, base_dir: Path) -> str:
+    """Return ``path`` relative to ``base_dir`` with graceful fallback."""
+    base_abs = base_dir.resolve()
+    candidate = path if path.is_absolute() else base_abs / path
+    candidate = candidate.resolve()
+    try:
+        return str(candidate.relative_to(base_abs))
+    except ValueError:
+        LOGGER.warning(
+            "Path %s is not under base %s; using absolute path", candidate, base_abs
+        )
+        return str(candidate)
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     agent_id: str
@@ -94,6 +108,67 @@ def collect_context(base_dir: Path, roots: Iterable[Path], limit: int = 5) -> Li
         except UnicodeDecodeError:
             continue
     return snippets
+
+
+def _alou_revision(alou_path: Path) -> str:
+    text = alou_path.read_text(encoding="utf-8", errors="ignore")
+    match = FRONTMATTER_RE.match(text)
+    if not match:
+        return "unknown"
+    try:
+        data = yaml.safe_load(match.group(1)) or {}
+    except Exception:
+        return "unknown"
+    return str(data.get("revision", "unknown"))
+
+
+def _collect_policy_refs(*sources: Iterable[str] | str) -> List[str]:
+    refs: List[str] = []
+    seen = set()
+    for source in sources:
+        if not source:
+            continue
+        if isinstance(source, str):
+            items = [source]
+        else:
+            items = list(source)
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            if "org/policy" in item:
+                ref = item.strip()
+                if ref not in seen:
+                    refs.append(ref)
+                    seen.add(ref)
+    return refs
+
+
+def _log_event(
+    events_path: Path,
+    *,
+    agent_id: str,
+    action: str,
+    targets: list[str],
+    dsse_ref: str,
+    alou_rev: str,
+    scopes: list[str],
+    policy_refs: list[str],
+    start_time: datetime,
+) -> None:
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "t": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "agent": agent_id,
+        "act": action,
+        "targets": targets,
+        "policy_refs": policy_refs,
+        "scopes": scopes,
+        "alou_rev": alou_rev,
+        "dsse_ref": dsse_ref,
+        "latency_ms": int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000),
+    }
+    with events_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def summarize_stub(agent_id: str, draft: str) -> str:
@@ -174,7 +249,7 @@ def compose_document(
     return f"<!--\n{header_yaml}-->\n\n{body.strip()}\n"
 
 
-def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
+def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict[str, str]:
     alou_path = base_dir / "org/_registry" / f"{config.agent_id}.alou.md"
     guard = RuntimeGuard.from_alou(alou_path, base_dir=base_dir)
     mcp_client = MCPClient(guard, base_dir=base_dir)
@@ -220,7 +295,10 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
         ],
     )
     guard.fs.write_text(output_path, artifact_body)
-
+    scopes = [str(scope) for scope in alou_data.get("fs_write_scopes", [])]
+    alou_rev = _alou_revision(alou_path)
+    policy_refs = _collect_policy_refs(knowledge_refs)
+    start_time = datetime.now(timezone.utc)
     summary = summarize_stub(config.agent_id, draft)
     summary_body = compose_document(
         artifact_path=config.summary_path,
@@ -252,6 +330,50 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
     except PipelineError as exc:
         LOGGER.warning("DSSE pipeline failed for %s: %s", config.agent_id, exc)
 
+    dsse_rel = _rel_to_base(attestation_path, base_dir)
+    _log_event(
+        events_path,
+        agent_id=config.agent_id,
+        action="write",
+        targets=[_rel_to_base(output_path, base_dir)],
+        dsse_ref=dsse_rel,
+        alou_rev=alou_rev,
+        scopes=scopes,
+        policy_refs=policy_refs,
+        start_time=start_time,
+    )
+
+    summary_attestation = Path("attestations") / config.agent_id / f"{config.summary_path.name}.dsse"
+    try:
+        run_pipeline(
+            artifact=config.summary_path,
+            private_key=private_key,
+            attestation=summary_attestation,
+            key_id=f"{config.agent_id}-bootstrap-summary",
+            base_dir=base_dir,
+        )
+    except FileNotFoundError:
+        LOGGER.warning(
+            "Skipping summary DSSE for %s because private key %s is missing",
+            config.agent_id,
+            private_key,
+        )
+    except PipelineError as exc:
+        LOGGER.warning("Summary DSSE pipeline failed for %s: %s", config.agent_id, exc)
+
+    summary_dsse_rel = _rel_to_base(summary_attestation, base_dir)
+    _log_event(
+        events_path,
+        agent_id=config.agent_id,
+        action="write",
+        targets=[_rel_to_base(config.summary_path, base_dir)],
+        dsse_ref=summary_dsse_rel,
+        alou_rev=alou_rev,
+        scopes=scopes,
+        policy_refs=policy_refs,
+        start_time=datetime.now(timezone.utc),
+    )
+
     return {
         "agent_id": config.agent_id,
         "output": str(output_path),
@@ -260,13 +382,23 @@ def run_agent(config: AgentConfig, base_dir: Path) -> dict[str, str]:
     }
 
 
-def run_all(agent_ids: Sequence[str] | None = None, *, base_dir: Path | None = None) -> List[dict[str, str]]:
+def run_all(
+    agent_ids: Sequence[str] | None = None,
+    *,
+    base_dir: Path | None = None,
+    events_path: Path | None = None,
+) -> List[dict[str, str]]:
     base_dir = (base_dir or Path(".")).resolve()
+    events_path = events_path or base_dir / "experiments/results/events.jsonl"
+    events_path.parent.mkdir(parents=True, exist_ok=True)
     ids = list(agent_ids or BASE_AGENT_CONFIGS.keys())
     configs = [BASE_AGENT_CONFIGS[agent_id] for agent_id in ids]
     results: List[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=len(configs) or 1) as executor:
-        futures = {executor.submit(run_agent, cfg, base_dir): cfg.agent_id for cfg in configs}
+        futures = {
+            executor.submit(run_agent, cfg, base_dir, events_path=events_path): cfg.agent_id
+            for cfg in configs
+        }
         for future in as_completed(futures):
             agent_id = futures[future]
             try:
