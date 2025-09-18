@@ -129,6 +129,17 @@ jobs:
             echo "No result DSSE found under experiments/results (skipping)."
           fi
 
+      - name: Upload DSSE bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsse-bundle-${{ github.run_id }}
+          path: |
+            attestations/**/*.dsse
+            experiments/results/**/*.dsse
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload provenance summary
         if: always()
         uses: actions/upload-artifact@v4
