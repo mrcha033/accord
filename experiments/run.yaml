@@ -9,6 +9,21 @@ agents:
 governance:
   rule: condorcet
   quorum: 0.6
+  auto_ballot:
+    enabled: true
+    cadence_rounds: 10
+    electorate:
+      - AGENT-OPS01
+      - AGENT-PM01
+      - AGENT-ENG01
+    options:
+      ADD: agent:add:AGENT-RISK01
+      RETIRE: agent:remove:AGENT-OPS01
+      NONE: retain-current-roster
+    vote_rankings:
+      AGENT-PM01: ADD>NONE>RETIRE
+      AGENT-OPS01: NONE>ADD>RETIRE
+      AGENT-ENG01: ADD>NONE>RETIRE
 context:
   strategy: hybrid
   k_recent: 5

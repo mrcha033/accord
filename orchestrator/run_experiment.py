@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from orchestrator.experiment_loop import (
+    AutoBallotConfig,
     ExperimentLoop,
     LifecycleSpec,
     TimelineSpec,
@@ -33,6 +34,7 @@ class ExperimentSpec:
     outputs: dict[str, Any]
     timeline: TimelineSpec
     lifecycle: LifecycleSpec
+    auto_ballot: AutoBallotConfig
 
 
 DEFAULT_SPEC_PATH = Path("experiments/run.yaml")
@@ -44,16 +46,19 @@ def load_spec(path: Path) -> ExperimentSpec:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     timeline = TimelineSpec.from_mapping(data.get("timeline"))
     lifecycle = LifecycleSpec.from_mapping(data.get("lifecycle"))
+    governance = dict(data.get("governance", {}))
+    auto_ballot = AutoBallotConfig.from_mapping(governance.get("auto_ballot"))
     return ExperimentSpec(
         seed=int(data.get("seed", 0)),
         tasks=list(data.get("tasks", [])),
         agents=list(data.get("agents", [])),
-        governance=dict(data.get("governance", {})),
+        governance=governance,
         context=dict(data.get("context", {})),
         bus=dict(data.get("bus", {})),
         outputs=dict(data.get("outputs", {})),
         timeline=timeline,
         lifecycle=lifecycle,
+        auto_ballot=auto_ballot,
     )
 
 
@@ -167,6 +172,7 @@ def run_experiment(
         output_root=output_root,
         timeline=spec.timeline,
         lifecycle=spec.lifecycle,
+        auto_ballot=spec.auto_ballot,
         seed=spec.seed,
         spec_metadata=spec_metadata,
     )

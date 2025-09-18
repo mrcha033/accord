@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, MutableSet, Sequence
+
+import yaml
 
 from orchestrator.runtime import run_all
 from orchestrator.governance import (
@@ -57,6 +62,52 @@ class LifecycleSpec:
             max_agents=max_agents,
             probation_rounds=probation_rounds,
             evaluation_window=evaluation_window,
+        )
+
+
+@dataclass(slots=True)
+class AutoBallotConfig:
+    enabled: bool = False
+    cadence_rounds: int = 0
+    electorate: list[str] = field(default_factory=list)
+    options: Mapping[str, str] = field(default_factory=lambda: {"ADD": "agent:add:AGENT-RISK01", "NONE": "retain-current-roster"})
+    title: str = "Autonomous governance adjustment"
+    proposal_materials: list[str] = field(default_factory=list)
+    vote_rankings: Mapping[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, object] | None) -> "AutoBallotConfig":
+        if not data:
+            return cls()
+        enabled = bool(data.get("enabled", False))
+        cadence = int(data.get("cadence_rounds", 0) or 0)
+        electorate_raw = data.get("electorate")
+        electorate: list[str] = []
+        if isinstance(electorate_raw, Sequence) and not isinstance(electorate_raw, (str, bytes)):
+            electorate = [str(item) for item in electorate_raw]
+        options_raw = data.get("options")
+        if isinstance(options_raw, Mapping):
+            options = {str(k): str(v) for k, v in options_raw.items()}
+        else:
+            options = {"ADD": "agent:add:AGENT-RISK01", "NONE": "retain-current-roster"}
+        title = str(data.get("title", "Autonomous governance adjustment"))
+        materials_raw = data.get("proposal_materials")
+        proposal_materials: list[str] = []
+        if isinstance(materials_raw, Sequence) and not isinstance(materials_raw, (str, bytes)):
+            proposal_materials = [str(item) for item in materials_raw]
+        votes_raw = data.get("vote_rankings")
+        if isinstance(votes_raw, Mapping):
+            vote_rankings = {str(k): str(v) for k, v in votes_raw.items()}
+        else:
+            vote_rankings = {}
+        return cls(
+            enabled=enabled,
+            cadence_rounds=cadence,
+            electorate=electorate,
+            options=options,
+            title=title,
+            proposal_materials=proposal_materials,
+            vote_rankings=vote_rankings,
         )
 
 
@@ -181,6 +232,7 @@ class ExperimentLoop:
         output_root: Path,
         timeline: TimelineSpec,
         lifecycle: LifecycleSpec,
+        auto_ballot: AutoBallotConfig,
         seed: int,
         spec_metadata: Mapping[str, Any],
     ) -> None:
@@ -189,6 +241,7 @@ class ExperimentLoop:
         self.output_root = output_root
         self.timeline = timeline
         self.lifecycle = lifecycle
+        self.auto_ballot = auto_ballot
         self.seed = seed
         self.spec_metadata = dict(spec_metadata)
 
@@ -203,6 +256,12 @@ class ExperimentLoop:
         metrics = self.state.metrics or {}
         self._processed_ballots: MutableSet[str] = set(metrics.get("processed_ballots", []))
         self._processed_incidents: MutableSet[str] = set(metrics.get("processed_incidents", []))
+        governance_cfg = self.spec_metadata.get("governance", {})
+        self._governance_rule = str(governance_cfg.get("rule", "condorcet"))
+        try:
+            self._governance_quorum = float(governance_cfg.get("quorum", 0.0))
+        except (TypeError, ValueError):
+            self._governance_quorum = 0.0
 
     def run(self) -> dict[str, Any]:
         """Execute rounds until max_rounds reached or roster exhausted."""
@@ -228,6 +287,7 @@ class ExperimentLoop:
                 metadata=metadata,
                 agent_runs=results,
             )
+            self._maybe_generate_ballot(round_number, results)
             self._append_governance_events(events_path)
 
             completed_at = datetime.now(timezone.utc)
@@ -370,6 +430,122 @@ class ExperimentLoop:
             time.sleep(delay)
         except Exception:  # pragma: no cover - sleep interruptions
             LOGGER.debug("Sleep interrupted; continuing immediately")
+
+    def _maybe_generate_ballot(
+        self, round_number: int, results: Sequence[Dict[str, Any]]
+    ) -> None:
+        if not self.auto_ballot.enabled:
+            return
+        cadence = self.auto_ballot.cadence_rounds
+        if cadence <= 0 or round_number % cadence != 0:
+            return
+        pm_result = next((item for item in results if item.get("agent_id") == "AGENT-PM01"), None)
+        if not pm_result:
+            LOGGER.debug("Auto ballot skipped: AGENT-PM01 result not found for round %s", round_number)
+            return
+        key_path = self.base_dir / "keys/ed25519.key"
+        if not key_path.exists():
+            LOGGER.warning("Auto ballot skipped: private key missing at %s", key_path)
+            return
+        electorate = self.auto_ballot.electorate or list(self.state.roster)
+        if not electorate:
+            LOGGER.debug("Auto ballot skipped: electorate empty")
+            return
+        if not self.auto_ballot.options:
+            LOGGER.debug("Auto ballot skipped: no options configured")
+            return
+        now = datetime.now(timezone.utc)
+        ballot_id = now.strftime("%Y%m%dT%H%M%S-auto")
+        ballots_dir = self.base_dir / "org/policy/_ballots"
+        ballots_dir.mkdir(parents=True, exist_ok=True)
+        ballot_path = ballots_dir / f"{ballot_id}.yaml"
+
+        materials = list(self.auto_ballot.proposal_materials)
+        if not materials:
+            materials = [pm_result.get("output"), pm_result.get("summary")]
+        else:
+            materials.extend([pm_result.get("output"), pm_result.get("summary")])
+        materials_norm = [
+            path
+            for path in (self._normalise_material_path(item) for item in materials if item)
+            if path
+        ]
+        window_end = now + timedelta(hours=4)
+        ballot_data = {
+            "id": ballot_id,
+            "title": self.auto_ballot.title,
+            "rule": self._governance_rule,
+            "quorum": self._governance_quorum,
+            "electorate": electorate,
+            "options": dict(self.auto_ballot.options),
+            "proposal_materials": materials_norm,
+            "window": {
+                "start": now.isoformat().replace("+00:00", "Z"),
+                "end": window_end.isoformat().replace("+00:00", "Z"),
+            },
+        }
+        try:
+            ballot_path.write_text(yaml.safe_dump(ballot_data, sort_keys=False), encoding="utf-8")
+        except OSError as exc:
+            LOGGER.warning("Failed to write auto ballot %s: %s", ballot_path, exc)
+            return
+
+        if not self._run_ballot_pipeline(ballot_path, ballot_id, electorate):
+            return
+        LOGGER.info("Auto-generated ballot %s at %s", ballot_id, ballot_path)
+
+    def _normalise_material_path(self, value: str | None) -> str:
+        if not value:
+            return ""
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            return candidate.as_posix()
+        try:
+            return candidate.relative_to(self.base_dir).as_posix()
+        except ValueError:
+            return candidate.as_posix()
+
+    def _run_ballot_pipeline(
+        self, ballot_path: Path, ballot_id: str, electorate: Sequence[str]
+    ) -> bool:
+        try:
+            ballot_arg = ballot_path.relative_to(self.base_dir).as_posix()
+        except ValueError:
+            ballot_arg = ballot_path.as_posix()
+        commands = [
+            [sys.executable, "-m", "scripts.gedi_ballot", "propose", ballot_arg],
+        ]
+        options_order = list(self.auto_ballot.options.keys())
+        default_ranking = ">".join(options_order) if options_order else ""
+        vote_rankings = dict(self.auto_ballot.vote_rankings)
+        for agent in electorate:
+            ranking = vote_rankings.get(agent, default_ranking)
+            if not ranking:
+                continue
+            commands.append(
+                [
+                    sys.executable,
+                    "-m",
+                    "scripts.gedi_ballot",
+                    "vote",
+                    ballot_id,
+                    "--agent",
+                    agent,
+                    "--ranking",
+                    ranking,
+                ]
+            )
+        commands.append([sys.executable, "-m", "scripts.gedi_ballot", "tally", ballot_id])
+        commands.append([sys.executable, "-m", "scripts.gedi_ballot", "adopt", ballot_id])
+
+        env = os.environ.copy()
+        for cmd in commands:
+            try:
+                subprocess.run(cmd, check=True, cwd=self.base_dir, env=env)
+            except subprocess.CalledProcessError as exc:
+                LOGGER.warning("Auto ballot command failed (%s): %s", " ".join(cmd), exc)
+                return False
+        return True
 
     def _append_governance_events(self, events_path: Path) -> list[dict[str, Any]]:
         absolute = events_path if events_path.is_absolute() else (self.base_dir / events_path)
