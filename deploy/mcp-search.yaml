@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  mcp-search:
+    image: ghcr.io/modelcontextprotocol/server-search:latest
+    container_name: mcp-search
+    restart: unless-stopped
+    environment:
+      - MCP_SEARCH_INDEX_PATH=/index/index.jsonl
+    volumes:
+      - ../indexes:/index:ro
+    ports:
+      - "8083:8080"

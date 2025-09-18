@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  mcp-file:
+    image: ghcr.io/modelcontextprotocol/server-file:latest
+    container_name: mcp-file
+    restart: unless-stopped
+    environment:
+      - MCP_FILE_ROOT=/work
+    volumes:
+      - ../:/work:ro
+    ports:
+      - "8082:8080"

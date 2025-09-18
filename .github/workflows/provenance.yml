@@ -36,6 +36,13 @@ jobs:
           . .venv/bin/activate
           python -m scripts.provtools keygen --out keys
 
+      - name: Generate roster and scope matrix
+        run: |
+          . .venv/bin/activate
+          python -m scripts.gen_roster
+          python -m scripts.gen_scope_matrix
+          git diff --exit-code agents/README.md docs/agent-scope-matrix.md
+
       - name: Lint bus messages
         run: |
           . .venv/bin/activate

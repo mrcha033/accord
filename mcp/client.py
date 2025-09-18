@@ -1,16 +1,24 @@
-"""Local stub implementation of an MCP client with runtime guard integration.
+"""MCP client with runtime-guard integration and remote fallback.
 
-The real MCP protocol relies on external servers. This module keeps the same
-shape so agents can be wired to actual servers later, while providing enough
-functionality for local orchestration and testing.
+The default implementation uses local stubs for file/search interactions. When
+environment variable ``ACCORD_MCP_MODE`` is set to ``remote`` the client will
+attempt to call HTTP endpoints defined by ``ACCORD_MCP_FILE_URL`` and
+``ACCORD_MCP_SEARCH_URL``. If the remote calls fail, the client logs a warning
+and falls back to the stub behaviour.
 """
 from __future__ import annotations
 
+import json
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, List
+from urllib import error, parse, request
 
 from scripts.runtime_guard import RuntimeGuard, ScopeError
+
+LOGGER = logging.getLogger(__name__)
 
 from .index import SimpleIndex
 
@@ -33,6 +41,27 @@ class MCPClient:
         self._guard = guard
         self._base_dir = (base_dir or Path(".")).resolve()
         self._wrapped = guard.wrap_tool_call(self._dispatch)
+        self._remote = None
+        self._remote_active = False
+        mode = os.getenv("ACCORD_MCP_MODE", "stub").lower()
+        if mode == "remote":
+            file_url = os.getenv("ACCORD_MCP_FILE_URL")
+            search_url = os.getenv("ACCORD_MCP_SEARCH_URL")
+            try:
+                self._remote = _RemoteAdapter(file_url=file_url, search_url=search_url)
+                self._remote_active = True
+                LOGGER.info(
+                    "Using remote MCP endpoints (file=%s, search=%s)",
+                    file_url,
+                    search_url,
+                )
+            except Exception as exc:
+                LOGGER.warning(
+                    "Remote MCP setup failed (%s). Falling back to stub implementation.",
+                    exc,
+                )
+                self._remote = None
+                self._remote_active = False
         self._index = SimpleIndex(self._base_dir)
 
     # Public API ---------------------------------------------------------
@@ -48,6 +77,15 @@ class MCPClient:
         handler = getattr(self, handler_name, None)
         if handler is None:
             raise MCPError(f"unsupported endpoint: {endpoint}")
+        if self._remote_active and endpoint in {"file", "search"} and self._remote:
+            try:
+                return self._remote.handle(endpoint, action, *args, **kwargs)
+            except RemoteError as exc:
+                LOGGER.warning(
+                    "Remote MCP call failed (%s). Reverting to stub for remainder of session.",
+                    exc,
+                )
+                self._remote_active = False
         return handler(action, *args, **kwargs)
 
     # Endpoint handlers --------------------------------------------------
@@ -152,3 +190,55 @@ def _first_line_with(text: str, pattern: str) -> str:
         if lower in line.lower():
             return line.strip()
     return ""
+
+
+class RemoteError(RuntimeError):
+    """Raised when remote MCP operations fail."""
+
+
+class _RemoteAdapter:
+    def __init__(self, *, file_url: str | None, search_url: str | None) -> None:
+        if not file_url or not search_url:
+            raise ValueError("ACCORD_MCP_FILE_URL and ACCORD_MCP_SEARCH_URL must be set")
+        self._file_url = file_url.rstrip("/")
+        self._search_url = search_url.rstrip("/")
+
+    def handle(self, endpoint: str, action: str, *args: Any, **kwargs: Any) -> Any:
+        if endpoint == "file":
+            return self._handle_file(action, **kwargs)
+        if endpoint == "search":
+            return self._handle_search(action, **kwargs)
+        raise RemoteError(f"remote endpoint not supported: {endpoint}")
+
+    def _handle_file(self, action: str, *, path: str) -> Any:
+        if action in {"read", "read_text"}:
+            data = self._http_get(self._file_url + "/file", {"path": path})
+            return data.decode("utf-8") if action == "read_text" else data
+        if action == "read_bytes":
+            return self._http_get(self._file_url + "/file", {"path": path})
+        if action == "list":
+            payload = self._http_get(self._file_url + "/list", {"path": path})
+            return json.loads(payload.decode("utf-8"))
+        raise RemoteError(f"unsupported file action: {action}")
+
+    def _handle_search(self, action: str, *, pattern: str, limit: int = 20, paths: Iterable[str] | None = None) -> List[dict[str, Any]]:
+        if action != "grep":
+            raise RemoteError(f"unsupported search action: {action}")
+        params = {"pattern": pattern, "limit": str(limit)}
+        payload = self._http_get(self._search_url + "/search", params)
+        data = json.loads(payload.decode("utf-8"))
+        if not isinstance(data, list):
+            raise RemoteError("search response malformed")
+        return data
+
+    def _http_get(self, base: str, params: dict[str, str]) -> bytes:
+        query = parse.urlencode(params)
+        url = f"{base}?{query}" if params else base
+        try:
+            with request.urlopen(url, timeout=5) as response:  # type: ignore[assignment]
+                status = getattr(response, "status", 200)
+                if status >= 400:
+                    raise RemoteError(f"HTTP {status} for {url}")
+                return response.read()
+        except error.URLError as exc:
+            raise RemoteError(exc.reason)
