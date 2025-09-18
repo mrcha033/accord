@@ -101,7 +101,6 @@ SCHEMA: Dict[str, Any] = {
                 "vote_weight": {
                     "type": "number",
                     "minimum": 0.0,
-                    "maximum": 1.0,
                 },
                 "quorum": {
                     "type": "number",
@@ -140,7 +139,7 @@ SCHEMA: Dict[str, Any] = {
     "additionalProperties": True,
 }
 
-ALLOWED_MCP = {"file", "git", "search", "browser", "db"}
+ALLOWED_MCP = {"file", "git", "search", "browser", "db", "knowledge"}
 FORBIDDEN_FS = {
     "**/.git/**",
     "**/secrets/**",
@@ -205,16 +204,24 @@ def validate_file(path: Path) -> int:
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print("Usage: python validate_alou.py path/to/file.alou.md", file=sys.stderr)
+    if len(argv) <= 1:
+        print(
+            "Usage: python validate_alou.py path/to/file.alou.md [more.alou.md]",
+            file=sys.stderr,
+        )
         return 2
 
-    path = Path(argv[1])
-    if not path.exists():
-        print(f"File not found: {path}", file=sys.stderr)
-        return 2
+    exit_code = 0
+    for name in argv[1:]:
+        path = Path(name)
+        if not path.exists():
+            print(f"File not found: {path}", file=sys.stderr)
+            exit_code = max(exit_code, 2)
+            continue
+        result = validate_file(path)
+        exit_code = max(exit_code, result)
 
-    return validate_file(path)
+    return exit_code
 
 
 def cli() -> int:
