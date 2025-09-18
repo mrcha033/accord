@@ -145,6 +145,7 @@ def test_verify_rejects_unexpected_payload_type(tmp_path: pathlib.Path) -> None:
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
     assert payload["signature_ok"] is False
+    assert payload["error_code"] == "SIG_INVALID"
     assert any("unsupported payloadType" in err for err in payload["errors"])
 
 

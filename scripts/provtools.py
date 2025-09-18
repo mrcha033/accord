@@ -56,9 +56,9 @@ STATEMENT_SCHEMA: Dict[str, Any] = {
 
 
 try:  # local execution vs package
-    from scripts.provtools_cache import sha256_cached
+    from scripts.provtools_cache import HashRaceError, sha256_cached
 except ModuleNotFoundError:  # pragma: no cover - fallback when run as script
-    from provtools_cache import sha256_cached  # type: ignore
+    from provtools_cache import HashRaceError, sha256_cached  # type: ignore
 
 
 def _sha256(path: Path) -> str:
@@ -146,7 +146,14 @@ def fill_and_check_digests(base_dir: Path, statement: Dict[str, Any]) -> List[st
         if not target.exists():
             errors.append(f"subject path not found: {name}")
             continue
-        actual = _sha256(target)
+        try:
+            actual = _sha256(target)
+        except HashRaceError:
+            errors.append(f"file changed during hashing: {name}")
+            continue
+        except FileNotFoundError:
+            errors.append(f"subject path not found: {name}")
+            continue
         if "sha256" in digest:
             if digest["sha256"].lower() != actual:
                 errors.append(f"subject digest mismatch for {name}")
@@ -187,7 +194,14 @@ def fill_and_check_digests(base_dir: Path, statement: Dict[str, Any]) -> List[st
             errors.append(f"material path not found: {name}")
             continue
 
-        actual = _sha256(target)
+        try:
+            actual = _sha256(target)
+        except HashRaceError:
+            errors.append(f"file changed during hashing: {name}")
+            continue
+        except FileNotFoundError:
+            errors.append(f"material path not found: {name}")
+            continue
         if "sha256" in digest:
             if digest["sha256"].lower() != actual:
                 errors.append(f"materials digest mismatch for {name}")
@@ -392,6 +406,27 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     schema_ok = signature_ok and not schema_errors
     digest_ok = signature_ok and not digest_errors
+
+    if signature_ok and schema_ok and digest_ok:
+        error_code = "OK"
+    elif not signature_ok:
+        error_code = "SIG_INVALID"
+    elif schema_errors:
+        error_code = "SCHEMA_INVALID"
+    elif digest_errors:
+        if any("file changed during hashing" in e for e in digest_errors):
+            error_code = "HASH_RACE"
+        elif any("path" in e and "allowed" in e for e in digest_errors):
+            error_code = "PATH_FORBIDDEN"
+        elif any("digest mismatch" in e for e in digest_errors):
+            error_code = "DIGEST_MISMATCH"
+        else:
+            error_code = "DIGEST_INVALID"
+    elif errors:
+        error_code = "UNKNOWN_ERROR"
+    else:
+        error_code = "UNKNOWN_ERROR"
+
     payload = {
         "event": "verify",
         "signature_ok": signature_ok,
@@ -402,6 +437,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "dsse": str(dsse_path),
         "trace_id": trace_id,
         "duration_ms": int((time.perf_counter() - t0) * 1000),
+        "error_code": error_code,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if signature_ok and schema_ok and digest_ok else 1

@@ -90,6 +90,7 @@ def test_pipeline_cli_success(tmp_path: Path) -> None:
     assert payload["verify"]["schema_ok"] is True
     assert payload["verify"]["digest_ok"] is True
     assert payload["verify_exit_code"] == 0
+    assert payload["verify"]["error_code"] == "OK"
 
 
 def test_pipeline_cli_failure_json(tmp_path: Path) -> None:

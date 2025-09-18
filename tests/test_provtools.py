@@ -95,6 +95,7 @@ def test_build_and_verify_roundtrip(tmp_path: pathlib.Path):
     assert payload["signature_ok"] is True
     assert payload["schema_ok"] is True
     assert payload["digest_ok"] is True
+    assert payload["error_code"] == "OK"
 
 
 def test_digest_mismatch_fails(tmp_path: pathlib.Path):

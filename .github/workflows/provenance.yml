@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,10 +31,17 @@ jobs:
         id: diff
         run: |
           . .venv/bin/activate
-          BASE="${{ github.base_ref }}"
-          if [ -z "$BASE" ]; then BASE="origin/main"; fi
-          git fetch --depth=100 origin "$BASE" || true
-          FILES=$(git diff --name-only "origin/${{ github.base_ref }}"... | grep -E '\.md$' || true)
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -n "$BASE_SHA" ]; then
+            git fetch --depth=100 origin "$BASE_SHA" || true
+            RANGE="$BASE_SHA...HEAD"
+          elif [ -n "${{ github.base_ref }}" ]; then
+            git fetch --depth=100 origin "${{ github.base_ref }}" || true
+            RANGE="origin/${{ github.base_ref }}...HEAD"
+          else
+            RANGE="HEAD^...HEAD"
+          fi
+          FILES=$(git diff --name-only "$RANGE" | grep -E '\.md$' || true)
           {
             echo "FILES<<EOF"
             echo "$FILES"
