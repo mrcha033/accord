@@ -3,6 +3,6 @@
 
 | Agent ID | Role Title | MCP Allow | Write Scopes | Data Classification |
 | --- | --- | --- | --- | --- |
-| `AGENT-ENG01` | Engineering Synth | `file`, `knowledge` | `org/eng/**`<br/>`bus/inbox/**`<br/>`bus/daily/**`<br/>`experiments/results/**`<br/>`attestations/AGENT-ENG01/**` | internal |
-| `AGENT-OPS01` | Operations Steward | `file`, `search` | `org/ops/**`<br/>`bus/alerts/**`<br/>`bus/daily/**`<br/>`attestations/AGENT-OPS01/**` | internal |
+| `AGENT-ENG01` | Engineering Synth | `file`, `search`, `knowledge` | `org/eng/**`<br/>`bus/inbox/**`<br/>`bus/daily/**`<br/>`experiments/results/**`<br/>`attestations/AGENT-ENG01/**` | internal |
+| `AGENT-OPS01` | Operations Steward | `file`, `search`, `knowledge` | `org/ops/**`<br/>`bus/alerts/**`<br/>`bus/daily/**`<br/>`attestations/AGENT-OPS01/**` | internal |
 | `AGENT-PM01` | Policy Mediator | `file`, `search`, `knowledge` | `org/policy/**`<br/>`bus/daily/**`<br/>`bus/policy/**`<br/>`attestations/AGENT-PM01/**` | internal |

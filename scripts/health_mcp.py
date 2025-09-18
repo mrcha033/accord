@@ -46,24 +46,33 @@ def parse_endpoints(values: Iterable[str]) -> Dict[str, Endpoint]:
     return endpoints
 
 
+def _health_request(url: str, timeout: float, method: str) -> tuple[int, bytes] | None:
+    req = request.Request(url, method=method)
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:  # type: ignore[assignment]
+            status = getattr(resp, "status", 200)
+            data = b"" if method == "HEAD" else resp.read()
+            return status, data
+    except error.URLError:
+        return None
+
+
 def check_endpoint(endpoint: Endpoint, timeout: float) -> str | None:
     health_url = endpoint.url + "/health"
-    try:
-        with request.urlopen(health_url, timeout=timeout) as resp:  # type: ignore[assignment]
-            if getattr(resp, "status", 200) >= 400:
-                return f"{endpoint.name}: HTTP {getattr(resp, 'status', 'unknown')}"
-            try:
-                body = resp.read().decode("utf-8")
-                if body:
-                    json.loads(body)
-            except Exception:
-                # Non-JSON bodies are tolerated as long as status is OK
-                pass
-            return None
-    except error.URLError as exc:
-        return f"{endpoint.name}: unreachable ({exc.reason})"
-    except Exception as exc:  # pragma: no cover
-        return f"{endpoint.name}: error ({exc})"
+    result = _health_request(health_url, timeout, "HEAD")
+    if result is None:
+        result = _health_request(health_url, timeout, "GET")
+    if result is None:
+        return f"{endpoint.name}: unreachable"
+    status, data = result
+    if status >= 400:
+        return f"{endpoint.name}: HTTP {status}"
+    if data:
+        try:
+            json.loads(data.decode("utf-8"))
+        except Exception:
+            pass
+    return None
 
 
 def check_endpoints(endpoints: Dict[str, Endpoint], timeout: float) -> List[str]:
@@ -84,6 +93,7 @@ def main(argv: List[str] | None = None) -> int:
         help="Endpoint definition name=url. Defaults to ACCORD_MCP_* env vars.",
     )
     parser.add_argument("--timeout", type=float, default=5.0, help="Timeout per request in seconds")
+    parser.add_argument("--json", action="store_true", help="Emit JSON summary")
     args = parser.parse_args(argv)
 
     try:
@@ -93,15 +103,25 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
     if not endpoints:
-        print("No endpoints supplied.")
+        message = "No endpoints supplied."
+        if args.json:
+            print(json.dumps({"ok": False, "issues": [message]}, ensure_ascii=False))
+        else:
+            print(message)
         return 1
 
     issues = check_endpoints(endpoints, args.timeout)
     if issues:
-        for issue in issues:
-            print(issue)
+        if args.json:
+            print(json.dumps({"ok": False, "issues": issues}, ensure_ascii=False))
+        else:
+            for issue in issues:
+                print(issue)
         return 1
-    print("All MCP endpoints healthy.")
+    if args.json:
+        print(json.dumps({"ok": True, "issues": []}, ensure_ascii=False))
+    else:
+        print("All MCP endpoints healthy.")
     return 0
 
 

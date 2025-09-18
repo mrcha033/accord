@@ -11,6 +11,7 @@ def _write_markdown(path: Path, text: str) -> None:
 def _ensure_keys(base: Path) -> Path:
     priv = base / "keys/ed25519.key"
     pub = base / "keys/ed25519.pub"
+    priv.parent.mkdir(parents=True, exist_ok=True)
     if not priv.exists():
         provtools.keygen_ed25519(priv, pub)
     return priv

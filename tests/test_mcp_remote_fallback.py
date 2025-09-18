@@ -20,5 +20,8 @@ def test_remote_fallback_to_stub(monkeypatch: pytest.MonkeyPatch, caplog: pytest
 
     client = MCPClient(guard)
     response = client.call("file", "read_text", path="scripts/validate_alou.py")
-    assert "Runtime scope enforcement" in response.data
-    assert any("Falling back to stub" in record.message for record in caplog.records)
+    assert "ALOU" in response.data
+    assert any("Remote MCP call failed" in record.message for record in caplog.records)
+    # second call uses stub immediately
+    response2 = client.call("file", "read_text", path="scripts/validate_alou.py")
+    assert "ALOU" in response2.data

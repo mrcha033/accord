@@ -12,5 +12,5 @@
 | Agent ID | Guilds |
 | --- | --- |
 | `AGENT-ENG01` | Reliability |
-| `AGENT-OPS01` | n/a |
+| `AGENT-OPS01` | Continuity |
 | `AGENT-PM01` | GEDI |

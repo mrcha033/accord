@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, List
@@ -43,12 +44,26 @@ class MCPClient:
         self._wrapped = guard.wrap_tool_call(self._dispatch)
         self._remote = None
         self._remote_active = False
+        self._strict_remote = os.getenv("ACCORD_MCP_STRICT_REMOTE", "0") == "1"
+        self._circuit_reset_s = int(os.getenv("ACCORD_MCP_CIRCUIT_RESET", "0"))
+        self._remote_down_at: float | None = None
         mode = os.getenv("ACCORD_MCP_MODE", "stub").lower()
         if mode == "remote":
             file_url = os.getenv("ACCORD_MCP_FILE_URL")
             search_url = os.getenv("ACCORD_MCP_SEARCH_URL")
             try:
-                self._remote = _RemoteAdapter(file_url=file_url, search_url=search_url)
+                timeout = float(os.getenv("ACCORD_MCP_TIMEOUT", "5"))
+                retries = int(os.getenv("ACCORD_MCP_RETRIES", "2"))
+                agent_id = os.getenv("ACCORD_AGENT_ID", "AGENT-UNKNOWN")
+                token = os.getenv("ACCORD_MCP_TOKEN", "")
+                self._remote = _RemoteAdapter(
+                    file_url=file_url,
+                    search_url=search_url,
+                    timeout=timeout,
+                    retries=retries,
+                    agent_id=agent_id,
+                    token=token,
+                )
                 self._remote_active = True
                 LOGGER.info(
                     "Using remote MCP endpoints (file=%s, search=%s)",
@@ -78,25 +93,42 @@ class MCPClient:
         if handler is None:
             raise MCPError(f"unsupported endpoint: {endpoint}")
         if self._remote_active and endpoint in {"file", "search"} and self._remote:
+            if "path" in kwargs:
+                _, rel = self._validate_path(kwargs["path"])
+                kwargs["path"] = rel
+            if endpoint == "search" and "paths" in kwargs and kwargs["paths"]:
+                kwargs["paths"] = [self._validate_path(p)[1] for p in kwargs["paths"]]
             try:
-                return self._remote.handle(endpoint, action, *args, **kwargs)
+                if self._remote_down_at and self._circuit_reset_s:
+                    if time.time() - self._remote_down_at < self._circuit_reset_s:
+                        raise RemoteError("circuit-open")
+                result = self._remote.handle(endpoint, action, *args, **kwargs)
+                self._remote_down_at = None
+                return result
             except RemoteError as exc:
                 LOGGER.warning(
-                    "Remote MCP call failed (%s). Reverting to stub for remainder of session.",
+                    "Remote MCP call failed (%s).",
                     exc,
                 )
+                if self._strict_remote:
+                    raise
                 self._remote_active = False
+                self._remote_down_at = time.time()
         return handler(action, *args, **kwargs)
 
     # Endpoint handlers --------------------------------------------------
     def _handle_file(self, action: str, *, path: str) -> Any:
-        candidate = self._resolve_path(path)
+        candidate, _ = self._validate_path(path)
         if action in {"read", "read_text"}:
             return candidate.read_text(encoding="utf-8")
         if action == "read_bytes":
             return candidate.read_bytes()
         if action == "list" and candidate.is_dir():
-            return sorted(str(p.relative_to(self._base_dir)) for p in candidate.rglob("*"))
+            return sorted(
+                str(p.relative_to(self._base_dir))
+                for p in candidate.rglob("*")
+                if p.is_file()
+            )
         raise MCPError(f"unsupported file action: {action}")
 
     def _handle_search(
@@ -109,7 +141,7 @@ class MCPClient:
     ) -> List[dict[str, Any]]:
         if action != "grep":
             raise MCPError(f"unsupported search action: {action}")
-        roots = [self._resolve_path(p) for p in (paths or ["."])]
+        roots = [self._validate_path(p)[0] for p in (paths or ["."])]
         findings: List[dict[str, Any]] = []
 
         indexed = self._index.search(pattern, limit)
@@ -147,7 +179,7 @@ class MCPClient:
     ) -> List[str]:
         if action != "retrieve":
             raise MCPError(f"unsupported knowledge action: {action}")
-        root = self._resolve_path(notes_dir)
+        root, _ = self._validate_path(notes_dir)
         indexed = self._index.knowledge(topic, limit)
         matches: List[str] = list(indexed)
         if len(matches) >= limit:
@@ -170,18 +202,31 @@ class MCPClient:
         return matches
 
     # Helpers ------------------------------------------------------------
-    def _resolve_path(self, raw: str) -> Path:
+    def _validate_path(self, raw: str) -> tuple[Path, str]:
+        if "\x00" in raw:
+            raise ScopeError("NUL byte in path not allowed")
         path = Path(raw)
-        if path.is_absolute() or str(path).startswith("~"):
+        if path.is_absolute() or raw.startswith("~"):
             raise ScopeError(f"absolute or tilde path not allowed in MCP call: {raw}")
-        candidate = (self._base_dir / path).resolve()
+        if any(part == ".." for part in path.parts):
+            raise ScopeError(f"parent directory reference not allowed: {raw}")
+        candidate = (self._base_dir / path).resolve(strict=False)
         try:
-            candidate.relative_to(self._base_dir)
+            rel = candidate.relative_to(self._base_dir)
         except ValueError as exc:
             raise ScopeError(f"MCP path escapes base dir: {raw}") from exc
-        if candidate.is_symlink():
-            raise ScopeError(f"symlink targets not allowed: {raw}")
-        return candidate
+        probe = candidate
+        base_real = self._base_dir.resolve(strict=False)
+        while True:
+            if probe.is_symlink():
+                raise ScopeError(f"symlink component not allowed: {raw}")
+            if probe == base_real:
+                break
+            new_probe = probe.parent
+            if new_probe == probe:
+                break
+            probe = new_probe
+        return candidate, str(rel)
 
 
 def _first_line_with(text: str, pattern: str) -> str:
@@ -197,11 +242,24 @@ class RemoteError(RuntimeError):
 
 
 class _RemoteAdapter:
-    def __init__(self, *, file_url: str | None, search_url: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        file_url: str | None,
+        search_url: str | None,
+        timeout: float = 5.0,
+        retries: int = 2,
+        agent_id: str = "AGENT-UNKNOWN",
+        token: str = "",
+    ) -> None:
         if not file_url or not search_url:
             raise ValueError("ACCORD_MCP_FILE_URL and ACCORD_MCP_SEARCH_URL must be set")
         self._file_url = file_url.rstrip("/")
         self._search_url = search_url.rstrip("/")
+        self._timeout = max(timeout, 1e-3)
+        self._retries = max(retries, 0)
+        self._agent_id = agent_id
+        self._token = token
 
     def handle(self, endpoint: str, action: str, *args: Any, **kwargs: Any) -> Any:
         if endpoint == "file":
@@ -225,6 +283,8 @@ class _RemoteAdapter:
         if action != "grep":
             raise RemoteError(f"unsupported search action: {action}")
         params = {"pattern": pattern, "limit": str(limit)}
+        if paths:
+            params["paths"] = ",".join(paths)
         payload = self._http_get(self._search_url + "/search", params)
         data = json.loads(payload.decode("utf-8"))
         if not isinstance(data, list):
@@ -234,11 +294,24 @@ class _RemoteAdapter:
     def _http_get(self, base: str, params: dict[str, str]) -> bytes:
         query = parse.urlencode(params)
         url = f"{base}?{query}" if params else base
-        try:
-            with request.urlopen(url, timeout=5) as response:  # type: ignore[assignment]
-                status = getattr(response, "status", 200)
-                if status >= 400:
-                    raise RemoteError(f"HTTP {status} for {url}")
-                return response.read()
-        except error.URLError as exc:
-            raise RemoteError(exc.reason)
+        headers = {"Accept": "application/json", "X-Agent-ID": self._agent_id}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        req = request.Request(url, headers=headers, method="GET")
+        last_exc: Exception | None = None
+        for attempt in range(self._retries + 1):
+            try:
+                with request.urlopen(req, timeout=self._timeout) as response:  # type: ignore[assignment]
+                    status = getattr(response, "status", 200)
+                    if status >= 400:
+                        raise RemoteError(f"HTTP {status} for {url}")
+                    return response.read()
+            except error.URLError as exc:
+                last_exc = exc
+                if attempt < self._retries:
+                    time.sleep(0.3 * (2**attempt))
+                continue
+            except Exception as exc:  # pragma: no cover
+                last_exc = exc
+                break
+        raise RemoteError(getattr(last_exc, "reason", last_exc) if last_exc else "unknown error")
