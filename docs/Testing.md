@@ -43,8 +43,8 @@ provenance:
 ## Manual
 1. **Guard enforcement**: run `python - <<'PY'` scripts to attempt unauthorized writes and expect `ScopeError`.
 2. **Orchestrator dry run**: `python -m orchestrator.runtime --json` (requires `keys/` or expects warning).
-3. **Experiment harness**: `python -m orchestrator.run_experiment --spec experiments/run.yaml --attest` (attestation optional if keys absent).
-4. **Provenance verification**: `python -m scripts.provtools verify --dsse <file> --pub keys/ed25519.pub` once DSSE generated.
+3. **Experiment harness**: `python -m orchestrator.run_experiment --spec experiments/run.yaml --attest` (now emits `metadata.prov.md` + `metadata.json.dsse`).
+4. **Provenance verification**: `python -m scripts.provtools verify --dsse <file> --pub keys/ed25519.pub` — include `experiments/results/*/metadata.json.dsse`.
 
 ## Edge Cases to Simulate
 - Concurrent agent launches (increase worker count).
@@ -58,3 +58,4 @@ Document pass/fail outcomes under `experiments/results/<run>/` along with DSSE e
 1. `venv/bin/python -m scripts.provtools keygen --out keys`
 2. `ACCORD_LLM_PROVIDER=mock venv/bin/python -m orchestrator.run_experiment --spec experiments/run.yaml --attest`
 3. `for dsse in attestations/AGENT-*/*.dsse; do venv/bin/python -m scripts.provtools verify --dsse "$dsse" --pub keys/ed25519.pub; done`
+4. `find experiments/results -name 'metadata.json.dsse' -print0 | xargs -0 -I{} venv/bin/python -m scripts.provtools verify --dsse {} --pub keys/ed25519.pub`

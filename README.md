@@ -28,6 +28,27 @@ pip install --upgrade pip
 pip install -r requirements-dev.txt  # install pytest, jsonschema, etc.
 ```
 
+## Environment Configuration
+
+Sensitive settings (LLM provider, API keys, provenance key overrides) live in
+`.env` files that never leave your machine.
+
+1. Copy the template and customise values:
+
+   ```bash
+   cp .env.template .env
+   # edit .env and set ACCORD_LLM_PROVIDER, OPENAI_API_KEY, etc.
+   ```
+
+2. Run orchestration commands through the helper so variables load automatically:
+
+   ```bash
+   scripts/with-env.sh python -m orchestrator.run_experiment --spec experiments/run.yaml --attest
+   ```
+
+Set `ACCORD_ENV_FILE=/path/to/profile.env` when you want an alternate config.
+
+
 ## Embedding Provenance in Markdown
 
 Front matter must follow the in-toto statement schema. See
