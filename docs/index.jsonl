@@ -1,0 +1,3 @@
+{"path": "docs/Provenance.md", "text": "Provenance & Runtime Enforcement summary covering provtools build/verify and runtime guard usage.", "topics": ["provenance", "dsse", "runtime_guard"]}
+{"path": "org/policy/GEDI-governance.md", "text": "GEDI governance charter detailing Condorcet voting, quorum rules, provenance enforcement and audit cycles.", "topics": ["gedi", "governance", "condorcet"]}
+{"path": "docs/Testing.md", "text": "Testing playbook for accord including pytest coverage, manual guard verification, and smoke checklist.", "topics": ["testing", "smoke", "guard"]}

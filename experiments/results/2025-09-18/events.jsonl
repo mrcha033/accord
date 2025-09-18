@@ -1,0 +1,3 @@
+{"timestamp": "2025-09-18T02:05:34+00:00", "agent_id": "AGENT-OPS01", "artifact": "org/ops/bootstrap-ops-report.md", "summary": "bus/daily/ops-status.md", "attestation": "attestations/AGENT-OPS01/bootstrap-ops-report.md.dsse"}
+{"timestamp": "2025-09-18T02:05:34+00:00", "agent_id": "AGENT-ENG01", "artifact": "org/eng/orchestrator/bootstrap-notes.md", "summary": "bus/daily/engineering.md", "attestation": "attestations/AGENT-ENG01/bootstrap-notes.md.dsse"}
+{"timestamp": "2025-09-18T02:05:34+00:00", "agent_id": "AGENT-PM01", "artifact": "org/policy/briefs/gedi-bootstrap.md", "summary": "bus/daily/gedi.md", "attestation": "attestations/AGENT-PM01/gedi-bootstrap.md.dsse"}

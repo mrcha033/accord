@@ -55,69 +55,69 @@ jobs:
         run: |
           . .venv/bin/activate
           python - <<'PY'
-import json
-import os
-import pathlib
-import subprocess
-import sys
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
 
-files = [f.strip() for f in (os.environ.get("FILES") or "").splitlines() if f.strip()]
-summary = {"ok": True, "items": []}
+          files = [f.strip() for f in (os.environ.get("FILES") or "").splitlines() if f.strip()]
+          summary = {"ok": True, "items": []}
 
-if files:
-    pathlib.Path("attestations/ci").mkdir(parents=True, exist_ok=True)
+          if files:
+              pathlib.Path("attestations/ci").mkdir(parents=True, exist_ok=True)
 
-for fpath in files:
-    text = pathlib.Path(fpath).read_text(encoding="utf-8", errors="ignore")
-    if "<!--" not in text or "provenance:" not in text:
-        continue
+          for fpath in files:
+              text = pathlib.Path(fpath).read_text(encoding="utf-8", errors="ignore")
+              if "<!--" not in text or "provenance:" not in text:
+                  continue
 
-    out_path = pathlib.Path("attestations/ci") / (fpath.replace("/", "_") + ".dsse")
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.policy_synth_pipeline",
-        fpath,
-        "keys/ed25519.key",
-        str(out_path),
-        "--base-dir",
-        ".",
-    ]
-    proc = subprocess.run(cmd, text=True, capture_output=True)
+              out_path = pathlib.Path("attestations/ci") / (fpath.replace("/", "_") + ".dsse")
+              cmd = [
+                  sys.executable,
+                  "-m",
+                  "scripts.policy_synth_pipeline",
+                  fpath,
+                  "keys/ed25519.key",
+                  str(out_path),
+                  "--base-dir",
+                  ".",
+              ]
+              proc = subprocess.run(cmd, text=True, capture_output=True)
 
-    try:
-        payload = json.loads(proc.stdout.strip() or "{}")
-    except json.JSONDecodeError:
-        payload = {
-            "ok": False,
-            "error": "non-json output",
-            "raw": proc.stdout[-400:],
-        }
+              try:
+                  payload = json.loads(proc.stdout.strip() or "{}")
+              except json.JSONDecodeError:
+                  payload = {
+                      "ok": False,
+                      "error": "non-json output",
+                      "raw": proc.stdout[-400:],
+                  }
 
-    summary["items"].append(
-        {
-            "file": fpath,
-            "returncode": proc.returncode,
-            "stdout": payload,
-            "stderr": proc.stderr[-400:],
-        }
-    )
+              summary["items"].append(
+                  {
+                      "file": fpath,
+                      "returncode": proc.returncode,
+                      "stdout": payload,
+                      "stderr": proc.stderr[-400:],
+                  }
+              )
 
-    verify = payload.get("verify", {}) if isinstance(payload, dict) else {}
-    summary["ok"] &= (
-        proc.returncode == 0
-        and verify.get("signature_ok")
-        and verify.get("schema_ok")
-        and verify.get("digest_ok")
-    )
+              verify = payload.get("verify", {}) if isinstance(payload, dict) else {}
+              summary["ok"] &= (
+                  proc.returncode == 0
+                  and verify.get("signature_ok")
+                  and verify.get("schema_ok")
+                  and verify.get("digest_ok")
+              )
 
-summary_path = pathlib.Path("attestations/ci/summary.json")
-summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
-print(json.dumps(summary, ensure_ascii=False))
+          summary_path = pathlib.Path("attestations/ci/summary.json")
+          summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+          print(json.dumps(summary, ensure_ascii=False))
 
-if not summary["ok"]:
-    sys.exit(1)
-PY
+          if not summary["ok"]:
+              sys.exit(1)
+          PY
 
       - name: Upload provenance summary
         if: always()

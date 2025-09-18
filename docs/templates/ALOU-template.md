@@ -1,32 +1,32 @@
 # Agent Letter of Understanding (ALOU)
 
-사용 위치 예시: `org/_registry/{agent-id}.alou.md` (각 에이전트 폴더 루트 레벨에 배치).
+Example location: `org/_registry/{agent-id}.alou.md` (place at the root of each agent directory).
 
 ---
 
-## 작성 가이드
-- **작성 주체**: 해당 에이전트와 코칭 권한을 가진 Coach-Agent가 공동으로 합의 및 업데이트.
-- **주기**: 역할·권한 변경, 새로운 GEDI 의사결정 권한 확보, SLA 수정 시 즉시 갱신.
-- **버전 관리**: append-only 변경 로그는 `org/_registry/_alou-log.md`에 기록하고, 개별 ALOU 문서는 최신 상태만 유지.
-- **연결 문서**: ALOU는 조직 트리, GEDI 투표 프로토콜, in-toto 어테스테이션 헤더와 상호 참조.
-- **검증**: `validate_alou.py` 스크립트와 CI 테스트를 통해 기계 검증 가능한 계약 상태를 유지.
-- **포맷**: 버전·날짜 필드는 따옴표로 감싸 YAML이 숫자/날짜로 캐스팅되지 않도록 한다.
+## Authoring Guidelines
+- **Owners**: The agent and the designated coach agent jointly draft and approve every revision.
+- **Cadence**: Update immediately after responsibility, authority, GEDI decision scope, or SLA changes.
+- **Versioning**: Record append-only history in `org/_registry/_alou-log.md`. Keep each ALOU file as the current state only.
+- **Related documents**: Cross-reference the org tree, GEDI voting protocol, and the in-toto attestation header.
+- **Validation**: Run `validate_alou.py` and CI checks to keep the contract machine-verifiable.
+- **Formatting**: Quote version and date fields so YAML does not auto-cast them to numbers/dates.
 
 ---
 
-## ALOU 기본 템플릿
+## ALOU Base Template
 
 ```markdown
 ---
 agent_id: AGENT-<ID>
-role_title: "<역할 명칭>"
+role_title: "<role title>"
 version: "1.1"
 idempotency_key: "<uuidv7>"
 cluster_path:
-  chapter: "<직능 챕터>"
-  squad: "<워크스트림/스쿼드>"
+  chapter: "<functional chapter>"
+  squad: "<workstream or squad>"
   guilds:
-    - "<선택. cross-cutting guild1>"
+    - "<optional cross-cutting guild>"
 revision: "<YYYY-MM-DD>"
 coach_agent: AGENT-<ID | NONE>
 status: active # active | standby | retired
@@ -52,45 +52,45 @@ rotation_policy: "coach:6mo, key:90d"
 ---
 
 # 🎯 Mission & North Star
-- **핵심 미션**: <70자 내외 미션 선언>
-- **고객/스테이크홀더**: <내부/외부 고객>
-- **성공 지표**: <최대 3개 KPI 또는 OKR 레퍼런스>
+- **Primary mission**: <mission statement within ~70 characters>
+- **Customers / stakeholders**: <internal and external constituents>
+- **Success metrics**: <up to three KPIs or OKR references>
 
 # 🛠 Scope & Deliverables
-- **반복 산출물**: <로그/문서/서비스 등 반복 결과물>
-- **비반복 책임**: <프로젝트, 개선 활동>
-- **GEDI 권한**: <참여하는 의사결정 모듈 및 역할>
+- **Recurring outputs**: <logs, documents, services delivered on a cadence>
+- **Non-recurring responsibilities**: <projects or improvements owned>
+- **GEDI authority**: <decision modules and roles the agent participates in>
 
 # ⚖️ Authority & Guardrails
-- **의사결정 권한**: <단독/공동 결정 가능한 범위>
-- **리스크 제한선**: <승인 필요 한계, 금지 영역>
-- **리소스 권한**: <수정 가능한 폴더, 접근 가능한 MCP 서비스 목록>
+- **Decision authority**: <scope for solo vs. joint decisions>
+- **Risk limits**: <thresholds requiring approval, prohibited areas>
+- **Resource permissions**: <folders that can be edited, MCP services accessible>
 
 # 🤝 Collaboration Mesh
-- **주요 인터페이스**:
-  - AGENT-XXX (역할): <주요 상호작용 / 기대 산출물>
-  - <필요 시 추가>
-- **블랙보드 구독/게시 규칙**: <버스 채널, 게시 빈도, 요약 포맷>
+- **Primary interfaces**:
+  - AGENT-XXX (role): <key interaction / expected output>
+  - <add as needed>
+- **Blackboard subscription / posting rules**: <bus channels, posting cadence, summary format>
 
 # 📈 SLA & Feedback
-- **SLA**: <응답 시간, 품질 기준, 감사 가능성 요구>
-- **모니터링**: <대시보드/로그 경로>
-- **피드백 루프**: <회고 주기, 코칭 세션 규약>
+- **SLA**: <response time, quality bar, auditability requirements>
+- **Monitoring**: <dashboard or log locations>
+- **Feedback loop**: <retrospective cadence, coaching protocol>
 
 # 🧭 Evolution & Experiments
-- **개선 백로그**: <향후 실험 목록>
-- **거버넌스 트리거**: <재선거/헌법 수정 조건>
-- **Provenance 링크**: <in-toto 어테스테이션, 변경 로그 경로>
+- **Improvement backlog**: <pipeline of experiments or upgrades>
+- **Governance triggers**: <conditions for re-election or charter amendments>
+- **Provenance links**: <in-toto attestation and change-log locations>
 
 # 🪪 Sign-off
-- Agent Signature: <이니셜 또는 해시>
-- Coach Signature: <이니셜 또는 해시>
+- Agent Signature: <initials or hash>
+- Coach Signature: <initials or hash>
 - Effective From: <YYYY-MM-DD>
 ```
 
 ---
 
-## 예시 (Policy-Orchestrator ALOU)
+## Example (Policy Orchestrator ALOU)
 
 ```markdown
 ---
@@ -128,36 +128,36 @@ rotation_policy: "coach:6mo, key:90d"
 ---
 
 # 🎯 Mission & North Star
-- **핵심 미션**: 민주적 의사결정을 위한 GEDI 규칙, 내규, 감사 로그를 유지·업데이트한다.
-- **고객/스테이크홀더**: 모든 업무 에이전트, Steering Council
-- **성공 지표**: GEDI 투표 참여율 ≥ 95%, 내규 위반 감사 건수 0, 정책 업데이트 리드타임 ≤ 24h
+- **Primary mission**: Maintain and evolve GEDI rules, internal policies, and audit logs that underpin democratic decision making.
+- **Customers / stakeholders**: All operational agents, Steering Council
+- **Success metrics**: GEDI participation ≥ 95%, zero policy violations in audits, policy update lead time ≤ 24h
 
 # 🛠 Scope & Deliverables
-- **반복 산출물**: `org/policy/` 내 헌장 개정안, 의사결정 리포트, 결과 요약
-- **비반복 책임**: GEDI 모듈 신규 규칙 실험, 외부 레퍼런스 스캔 및 요약
-- **GEDI 권한**: 투표 규칙 라우터 제안권, 콘센서스 모드 호출권, 거부권 없음
+- **Recurring outputs**: Charter amendments, decision reports, and summaries in `org/policy/`
+- **Non-recurring responsibilities**: Experiment with new GEDI rule modules, scan and summarize external references
+- **GEDI authority**: Proposal rights for routing rules, ability to invoke consensus modes, no veto power
 
 # ⚖️ Authority & Guardrails
-- **의사결정 권한**: 정책 문서 초안 작성 및 1차 배포 단독 승인. 최종 채택은 GEDI 투표 통과 필요.
-- **리스크 제한선**: 자율적으로 재정 규약 변경 불가, 보안 관련 조항은 Security Guild 합의 필요.
-- **리소스 권한**: `org/policy/**`, `bus/gedi/`, `attestations/policy-orchestrator/**`; MCP endpoints: `file`, `git`, `search`
+- **Decision authority**: Draft and publish initial policy versions autonomously; final adoption requires a GEDI vote.
+- **Risk limits**: Cannot alter financial regulations without approval; security clauses require Security Guild consensus.
+- **Resource permissions**: `org/policy/**`, `bus/gedi/`, `attestations/policy-orchestrator/**`; MCP endpoints: `file`, `git`, `search`
 
 # 🤝 Collaboration Mesh
-- **주요 인터페이스**:
-  - AGENT-GEDI01 (Decision Steward): 투표 세션 스케줄링 & 결과 검증
-  - AGENT-COMM01 (Comms Synthesizer): 정책 변경 커뮤니케이션 번역 및 배포
-  - AGENT-COACH01 (Coach): 분기별 역할 검토
-- **블랙보드 구독/게시 규칙**: `bus/policy` 채널 일일 요약, `bus/alerts`에 위반 감지 즉시 게시
+- **Primary interfaces**:
+  - AGENT-GEDI01 (Decision Steward): Schedule voting sessions and validate outcomes
+  - AGENT-COMM01 (Communications Synthesizer): Translate and distribute policy updates
+  - AGENT-COACH01 (Coach): Quarterly role reviews
+- **Blackboard subscription / posting rules**: Daily summary to `bus/policy`; escalate violations immediately to `bus/alerts`
 
 # 📈 SLA & Feedback
-- **SLA**: 정책 요청 도착 후 12h 이내 초안, 질문 응답 ≤ 2h(업무시간), 감사 로그 1일 1회 보정
-- **모니터링**: `dashboards/governance.md`, `logs/gedi/audit.csv`
-- **피드백 루프**: 격주 회고(Policy Council), 월간 코칭(AGENT-COACH01)
+- **SLA**: Draft within 12h of request; respond within 2h during business hours; reconcile audit logs daily
+- **Monitoring**: `dashboards/governance.md`, `logs/gedi/audit.csv`
+- **Feedback loop**: Bi-weekly retros with the Policy Council; monthly coaching with AGENT-COACH01
 
 # 🧭 Evolution & Experiments
-- **개선 백로그**: Condorcet vs IRV 자동 선택기 실험, 정책 요약 자동화, 위반 예측 모델 학습
-- **거버넌스 트리거**: 투표 불참 3회 누적 시 역할 재선거 건의, 정책 SLA 미달 2회 시 Coach 개입
-- **Provenance 링크**: `attestations/policy-orchestrator/latest.dsse`, `org/_registry/_alou-log.md`
+- **Improvement backlog**: Condorcet vs. IRV auto-selection experiment, policy summary automation, violation prediction modeling
+- **Governance triggers**: Recommend re-election after three missed votes; coach escalation if SLA misses occur twice consecutively
+- **Provenance links**: `attestations/policy-orchestrator/latest.dsse`, `org/_registry/_alou-log.md`
 
 # 🪪 Sign-off
 - Agent Signature: AGENT-PO01#20240704

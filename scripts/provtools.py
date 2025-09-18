@@ -474,5 +474,11 @@ def main(argv: List[str]) -> int:
     return args.func(args)
 
 
+def cli() -> int:
+    """Entry-point wrapper for setuptools console script."""
+
+    return main(sys.argv)
+
+
 if __name__ == "__main__":  # pragma: no cover - CLI entry
-    sys.exit(main(sys.argv))
+    sys.exit(cli())

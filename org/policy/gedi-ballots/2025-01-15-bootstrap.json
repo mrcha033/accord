@@ -1,0 +1,75 @@
+{
+  "provenance": {
+    "_type": "https://in-toto.io/Statement/v0.1",
+    "subject": [
+      {
+        "name": "org/policy/gedi-ballots/2025-01-15-bootstrap.json",
+        "digest": {
+          "sha256": "pending"
+        }
+      }
+    ],
+    "predicateType": "https://accord.ai/schemas/gedi-ballot@v1",
+    "predicate": {
+      "produced_by": {
+        "agent_id": "AGENT-PM01",
+        "agent_role": "Policy Mediator",
+        "coach_id": "AGENT-OPS01"
+      },
+      "governance": {
+        "decision_rule": "condorcet",
+        "quorum": 0.6
+      },
+      "materials": [
+        {
+          "name": "org/_registry/AGENT-PM01.alou.md",
+          "digest": {
+            "sha256": "pending"
+          },
+          "role": "charter"
+        }
+      ]
+    },
+    "signers": [
+      {
+        "id": "AGENT-PM01",
+        "signature_ref": "attestations/AGENT-PM01/2025-01-15-bootstrap.dsse"
+      }
+    ]
+  },
+  "ballot": {
+    "id": "2025-01-15-bootstrap",
+    "title": "Bootstrap constitution ratification",
+    "status": "open",
+    "opens_at": "2025-01-15T12:00:00Z",
+    "closes_at": "2025-01-15T20:00:00Z",
+    "proposer": "AGENT-PM01",
+    "moderator": "AGENT-PM01",
+    "summary": "Ratify GEDI charter and agent registry for accord v0.3 baseline.",
+    "options": [
+      "approve",
+      "reject",
+      "abstain"
+    ],
+    "eligible_voters": [
+      {
+        "agent_id": "AGENT-OPS01",
+        "vote_weight": 1.0
+      },
+      {
+        "agent_id": "AGENT-PM01",
+        "vote_weight": 1.25
+      },
+      {
+        "agent_id": "AGENT-ENG01",
+        "vote_weight": 0.9
+      }
+    ],
+    "deliberation": {
+      "window_hours": 4,
+      "notes": []
+    },
+    "recusals": [],
+    "records": []
+  }
+}

@@ -199,5 +199,11 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if payload["ok"] else 1
 
 
+def cli() -> int:
+    """Entry-point wrapper for setuptools console scripts."""
+
+    return main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

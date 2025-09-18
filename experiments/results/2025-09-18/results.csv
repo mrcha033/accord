@@ -1,0 +1,4 @@
+agent_id,artifact,summary,attestation
+AGENT-OPS01,org/ops/bootstrap-ops-report.md,bus/daily/ops-status.md,attestations/AGENT-OPS01/bootstrap-ops-report.md.dsse
+AGENT-ENG01,org/eng/orchestrator/bootstrap-notes.md,bus/daily/engineering.md,attestations/AGENT-ENG01/bootstrap-notes.md.dsse
+AGENT-PM01,org/policy/briefs/gedi-bootstrap.md,bus/daily/gedi.md,attestations/AGENT-PM01/gedi-bootstrap.md.dsse

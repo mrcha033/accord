@@ -217,5 +217,11 @@ def main(argv: List[str]) -> int:
     return validate_file(path)
 
 
+def cli() -> int:
+    """Entry-point wrapper for setuptools."""
+
+    return main(sys.argv)
+
+
 if __name__ == "__main__":  # pragma: no cover - CLI entry
-    sys.exit(main(sys.argv))
+    sys.exit(cli())

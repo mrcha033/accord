@@ -1,0 +1,19 @@
+seed: 20250918
+tasks:
+  - policy_draft_v1
+  - spec_review_v2
+agents:
+  - AGENT-OPS01
+  - AGENT-PM01
+  - AGENT-ENG01
+governance:
+  rule: condorcet
+  quorum: 0.6
+context:
+  strategy: hybrid
+  k_recent: 5
+  rag_index: none
+bus:
+  summaries: daily
+outputs:
+  root: experiments/results/2025-09-18
