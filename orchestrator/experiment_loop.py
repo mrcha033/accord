@@ -15,6 +15,7 @@ import yaml
 
 from orchestrator.onboarding import AgentOnboardingError, materialize_agent
 from orchestrator.runtime import load_alou_data, load_registered_agent_configs, run_all
+from orchestrator.interaction_tracker import InteractionTracker, enhanced_log_event
 from orchestrator.governance import (
     collect_ballot_lifecycle_events,
     collect_incident_lifecycle_events,
@@ -379,6 +380,9 @@ class ExperimentLoop:
         self.economics = economics or EconomicConfig()
         self.crisis_config = crisis_config or CrisisConfig()
 
+        # Initialize interaction tracker
+        self.interaction_tracker = InteractionTracker(base_dir, output_root)
+
         self.output_root.mkdir(parents=True, exist_ok=True)
         self.state_path = self.output_root / "state.json"
         self.state = ExperimentState.load(
@@ -514,6 +518,35 @@ class ExperimentLoop:
 
             started_at = datetime.now(timezone.utc)
             results = run_all(self.state.roster or None, base_dir=self.base_dir, events_path=round_dir / "events.jsonl")
+
+            # Store comprehensive agent outputs and track interactions
+            for result in results:
+                agent_id = result["agent_id"]
+                output_path = Path(result["output"])
+                summary_path = Path(result["summary"])
+
+                # Read full content for storage
+                full_content = ""
+                if output_path.exists():
+                    full_content = output_path.read_text(encoding="utf-8")
+
+                # Store in interaction tracker
+                self.interaction_tracker.store_agent_output(
+                    round_number=round_number,
+                    agent_id=agent_id,
+                    output_path=output_path,
+                    summary_path=summary_path,
+                    full_content=full_content
+                )
+
+            # Track bus interactions
+            self.interaction_tracker.track_bus_interactions(round_number)
+
+            # Analyze conversation patterns
+            self.interaction_tracker.analyze_conversation_patterns(round_number)
+
+            # Create comprehensive round summary
+            self.interaction_tracker.create_round_summary(round_number, results)
 
             metadata = {
                 **self.spec_metadata,

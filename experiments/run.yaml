@@ -8,6 +8,13 @@ agents:
   - AGENT-OPS01
   - AGENT-PM01
   - AGENT-ENG01
+  - AGENT-RISK01
+  - AGENT-SEC01
+  - AGENT-DATA01
+  - AGENT-QA01
+  - AGENT-COMMS01
+  - AGENT-RESEARCH01
+  - AGENT-FINANCE01
 governance:
   rule: condorcet
   quorum: 0.6
@@ -18,11 +25,25 @@ governance:
       - AGENT-OPS01
       - AGENT-PM01
       - AGENT-ENG01
+      - AGENT-RISK01
+      - AGENT-SEC01
+      - AGENT-DATA01
+      - AGENT-QA01
+      - AGENT-COMMS01
+      - AGENT-RESEARCH01
+      - AGENT-FINANCE01
     discover_proposals: true
     retain_agents:
       - AGENT-OPS01
       - AGENT-PM01
       - AGENT-ENG01
+      - AGENT-RISK01
+      - AGENT-SEC01
+      - AGENT-DATA01
+      - AGENT-QA01
+      - AGENT-COMMS01
+      - AGENT-RESEARCH01
+      - AGENT-FINANCE01
     byzantine_tolerance: 0.1
     coalition_detection: true
     trust_tracking: true
@@ -71,11 +92,14 @@ bus:
   crisis_briefings: "when_active"
 
 outputs:
-  root: experiments/results/2025-09-18
+  root: experiments/results/2025-09-19
   social_graphs: true
   economic_traces: true
   coalition_logs: true
   behavioral_analytics: true
+  store_all_outputs: true
+  interaction_logs: true
+  agent_conversation_archive: true
 
 timeline:
   max_rounds: 100
