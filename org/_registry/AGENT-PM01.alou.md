@@ -18,7 +18,7 @@ mcp_allow: ["file","search","knowledge"]
 fs_write_scopes: ["org/policy/**","bus/daily/**","bus/policy/**","attestations/AGENT-PM01/**"]
 runtime:
   prompt_path: "agents/AGENT-PM01/prompt.md"
-  output_path: "org/policy/briefs/gedi-bootstrap.md"
+  output_path: "org/policy/reports/daily-governance.md"
   summary_path: "bus/daily/gedi.md"
   context_roots:
     - "org/policy"

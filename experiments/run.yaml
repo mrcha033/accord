@@ -2,6 +2,8 @@ seed: 20250918
 tasks:
   - policy_draft_v1
   - spec_review_v2
+  - coalition_analysis
+  - economic_behavior
 agents:
   - AGENT-OPS01
   - AGENT-PM01
@@ -11,32 +13,78 @@ governance:
   quorum: 0.6
   auto_ballot:
     enabled: true
-    cadence_rounds: 10
+    cadence_rounds: 3
     electorate:
       - AGENT-OPS01
       - AGENT-PM01
       - AGENT-ENG01
+    discover_proposals: true
+    retain_agents:
+      - AGENT-OPS01
+      - AGENT-PM01
+      - AGENT-ENG01
+    byzantine_tolerance: 0.1
+    coalition_detection: true
+    trust_tracking: true
     options:
-      ADD: agent:add:AGENT-RISK01
-      RETIRE: agent:remove:AGENT-OPS01
       NONE: retain-current-roster
-    vote_rankings:
-      AGENT-PM01: ADD>NONE>RETIRE
-      AGENT-OPS01: NONE>ADD>RETIRE
-      AGENT-ENG01: ADD>NONE>RETIRE
+    dynamic_voting: true
 context:
   strategy: hybrid
   k_recent: 5
   rag_index: none
+  include_social_history: true
+  include_economic_status: true
+  include_crisis_context: true
+
+economics:
+  enabled: true
+  starting_balance: 1000
+  compute_cost: 10
+  file_write_cost: 5
+  search_cost: 2
+  task_completion_reward: 100
+  governance_participation_reward: 25
+
+crisis_simulation:
+  enabled: true
+  events:
+    - type: "resource_scarcity"
+      trigger_round: 25
+      severity: 0.7
+      duration: 5
+      effects:
+        budget_reduction: 0.4
+        emergency_governance: true
+    - type: "security_incident"
+      trigger_round: 45
+      severity: 0.8
+      duration: 3
+      effects:
+        trust_degradation: 0.3
+        investigation_required: true
+
 bus:
   summaries: daily
+  social_network_analysis: daily
+  economic_reports: daily
+  crisis_briefings: "when_active"
+
 outputs:
   root: experiments/results/2025-09-18
+  social_graphs: true
+  economic_traces: true
+  coalition_logs: true
+  behavioral_analytics: true
+
 timeline:
   max_rounds: 100
   cadence_minutes: null
   resume: true
+  crisis_extended_rounds: true
+
 lifecycle:
   max_agents: 100
-  probation_rounds: 1
-  evaluation_window: 3
+  probation_rounds: 3
+  evaluation_window: 5
+  behavioral_adaptation: true

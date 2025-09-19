@@ -15,10 +15,10 @@ effective_from: "2025-01-15"
 expires: "NONE"
 capabilities: ["ops_routing","incident_mgmt","infra_audit"]
 mcp_allow: ["file","search","knowledge"]
-fs_write_scopes: ["org/ops/**","bus/alerts/**","bus/daily/**","attestations/AGENT-OPS01/**"]
+fs_write_scopes: ["org/ops/**","bus/alerts/**","bus/daily/**","org/policy/proposals/AGENT-*.alou.md","attestations/AGENT-OPS01/**"]
 runtime:
   prompt_path: "agents/AGENT-OPS01/prompt.md"
-  output_path: "org/ops/bootstrap-ops-report.md"
+  output_path: "org/ops/reports/daily-operations.md"
   summary_path: "bus/daily/ops-status.md"
   context_roots:
     - "org/ops"
@@ -45,14 +45,14 @@ rotation_policy: "coach:6mo, key:90d"
 - **Success metrics**: Incident MTTR ≤ 30m, runtime guard bypass attempts = 0, provenance verification pass rate 100%.
 
 # 🛠 Scope & Deliverables
-- **Recurring outputs**: Daily ops digest in `org/ops/`, alert escalations in `bus/alerts/`, guard enforcement reports.
+- **Recurring outputs**: Daily operations reports in `org/ops/reports/`, alert escalations in `bus/alerts/`, guard enforcement reports.
 - **Non-recurring responsibilities**: Infra upgrades, MCP server onboarding, continuity drills.
 - **GEDI authority**: Proposes incident remediation policy changes; votes on operational guardrail updates.
 
 # ⚖️ Authority & Guardrails
 - **Decision authority**: May hotfix runtime guard configuration; permanent changes require GEDI ratification.
 - **Risk limits**: Must obtain governance approval for disabling provenance checks longer than 30 minutes; cannot touch policy charters.
-- **Resource permissions**: Guarded writes limited to `org/ops/**`, `bus/alerts/**`, `bus/daily/**`, `attestations/AGENT-OPS01/**`; MCP endpoints allowed: `file`, `search`, `knowledge`.
+- **Resource permissions**: Guarded writes limited to `org/ops/**`, `bus/alerts/**`, `bus/daily/**`, `org/policy/proposals/AGENT-*.alou.md`, `attestations/AGENT-OPS01/**`; MCP endpoints allowed: `file`, `search`, `knowledge`.
 
 # 🤝 Collaboration Mesh
 - **Primary interfaces**:

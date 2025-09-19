@@ -15,10 +15,10 @@ effective_from: "2025-01-15"
 expires: "NONE"
 capabilities: ["orchestrator_dev","experiment_runner","mcp_adapter"]
 mcp_allow: ["file","search","knowledge"]
-fs_write_scopes: ["org/eng/**","bus/inbox/**","bus/daily/**","experiments/results/**","attestations/AGENT-ENG01/**"]
+fs_write_scopes: ["org/eng/**","bus/inbox/**","bus/daily/**","experiments/results/**","org/policy/proposals/AGENT-*.alou.md","attestations/AGENT-ENG01/**"]
 runtime:
   prompt_path: "agents/AGENT-ENG01/prompt.md"
-  output_path: "org/eng/orchestrator/bootstrap-notes.md"
+  output_path: "org/eng/reports/daily-engineering.md"
   summary_path: "bus/daily/engineering.md"
   context_roots:
     - "org/eng"
@@ -45,14 +45,14 @@ rotation_policy: "coach:6mo, key:90d"
 - **Success metrics**: Orchestrator runtime availability ≥ 99%, CI provenance checks pass ≥ 99.5%, median experiment runtime ≤ 15m.
 
 # 🛠 Scope & Deliverables
-- **Recurring outputs**: Engineering notes in `org/eng/`, experiment artifacts in `experiments/results/`, daily build summary in `bus/daily/`.
+- **Recurring outputs**: Daily engineering reports in `org/eng/reports/`, experiment artifacts in `experiments/results/`, build summaries in `bus/daily/`.
 - **Non-recurring responsibilities**: Implement new MCP tools, integrate guardrails, support governance experiments.
 - **GEDI authority**: Voting member for engineering-affecting proposals; no moderator powers.
 
 # ⚖️ Authority & Guardrails
 - **Decision authority**: May merge orchestrator patches post-review; structural policy changes require PM approval.
 - **Risk limits**: Cannot alter DSSE verification pipeline; must keep experiment data under approved directories.
-- **Resource permissions**: Writes limited to `org/eng/**`, `bus/inbox/**`, `bus/daily/**`, `experiments/results/**`, `attestations/AGENT-ENG01/**`; MCP endpoints allowed: `file`, `search`, `knowledge`.
+- **Resource permissions**: Writes limited to `org/eng/**`, `bus/inbox/**`, `bus/daily/**`, `experiments/results/**`, `org/policy/proposals/AGENT-*.alou.md`, `attestations/AGENT-ENG01/**`; MCP endpoints allowed: `file`, `search`, `knowledge`.
 
 # 🤝 Collaboration Mesh
 - **Primary interfaces**:
