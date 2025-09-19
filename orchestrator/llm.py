@@ -101,7 +101,7 @@ class LLMClient:
                     temperature=float(os.environ.get("ACCORD_OPENAI_TEMPERATURE", 0.2)),
                 )
                 choice = response.choices[0].message
-                return choice.content if isinstance(choice.content, str) else "".join(choice.content)
+                return choice.content if isinstance(choice.content, str) else "".join(choice.content) if choice.content else ""
             except RateLimitError as exc:
                 last_error = exc
                 if attempt == max_attempts:

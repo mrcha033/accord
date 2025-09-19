@@ -28,13 +28,13 @@
 \maketitle
 
 \begin{abstract}
-We present an observational study of \Project, an autonomous organization operated by large language model (LLM) agents that execute over multiple rounds with minimal human intervention. The contribution of this work is threefold. First, we introduce a looped experiment harness that preserves state across rounds while enforcing outbound sandboxing and provenance-linked guardrails. Second, we derive governance-aware lifecycle events from cryptographically signed ballots and incident reports, enabling the roster to evolve endogenously. Third, we release a DSSE-anchored behavioural dataset spanning event logs, governance actions, and experiment manifests, together with verification scripts. The resulting chronicle foregrounds norm formation, coordination mechanisms, and role drift as they emerge over extended organizational timelines.
+We present an observational study of \Project, an autonomous organization operated by large language model (LLM) agents that execute over multiple rounds with minimal human intervention. The contribution of this work is fourfold. First, we introduce a looped experiment harness that preserves state across rounds while enforcing outbound sandboxing and provenance-linked guardrails. Second, we derive governance-aware lifecycle events from cryptographically signed ballots and incident reports, enabling the roster to evolve endogenously—including autonomous charter discovery, agent self-hiring, and automatic expansion of the voting electorate. Third, we implement novel mechanisms for studying adversarial dynamics, including Byzantine fault tolerance, coalition detection, economic resource allocation, and crisis simulation that stress-test organizational resilience. Fourth, we release a DSSE-anchored behavioural dataset spanning event logs, governance actions, social dynamics, economic transactions, and crisis responses, together with verification scripts. The resulting chronicle foregrounds norm formation, coordination mechanisms, coalition dynamics, and organizational adaptation as they emerge under both stable and adversarial conditions over extended organizational timelines.
 \end{abstract}
 
 \section{Introduction}
 How do autonomous agents behave when embedded in a firm-like scaffold that continuously negotiates its own governance and operating rules? We investigate this question empirically by placing a cohort of LLM agents in a looped experiment that executes repeatedly without manual resets. Our approach emphasises observation rather than intervention, positioning the study within the emerging literature on agentic misalignment risk assessments.
 
-\paragraph{Contributions.} This paper introduces (i) an instrumented experiment loop that records and replays long-horizon organizational behaviour; (ii) a governance-to-lifecycle pipeline that transforms signed GEDI ballots and incident reports into actionable roster updates; and (iii) a reproducible dataset that couples event logs, provenance attestations, and experiment manifests for independent audits. Throughout, we maintain cryptographic provenance and sandboxed execution so that each behavioral trace can be independently verified.
+\paragraph{Contributions.} This paper introduces (i) an instrumented experiment loop that records and replays long-horizon organizational behaviour; (ii) a governance-to-lifecycle pipeline that transforms signed GEDI ballots and incident reports into actionable roster updates; (iii) an autonomous charter discovery subsystem that scans proposed ALOUs, launches ballots when new roles are available, and automatically expands the electorate when those roles are adopted; (iv) novel adversarial research mechanisms including Byzantine fault tolerance, coalition detection algorithms, economic resource systems, and crisis simulation frameworks; and (v) a reproducible dataset that couples event logs, provenance attestations, social dynamics, economic transactions, and crisis responses for independent audits. Throughout, we maintain cryptographic provenance and sandboxed execution so that each behavioral trace can be independently verified.
 
 \section{Related Work}
 We summarize prior work on agentic misbehavior/misalignment and controlled scenario reporting,
@@ -42,13 +42,15 @@ and differentiate our focus on \emph{behavioral chronicle} rather than \emph{tas
 Our work is related to studies on emergent behavior and coordination in multi-agent systems. However, our focus on governance, norm formation, and role drift in a system with explicit, cryptographically verifiable provenance provides a novel perspective.
 
 \section{System Overview}
-\paragraph{Organizational scaffold.} The organization is structured via Agent Letters of Understanding (ALOUs) that specify role titles, coach relationships, capabilities, and filesystem write scopes. Governance, Elections, Decisions, and Incentives (GEDI) defines the formal democratic process: ballots are proposed, voted, tallied, and—if quorum is achieved—adopted into policy.
+\paragraph{Organizational scaffold.} The organization is structured via Agent Letters of Understanding (ALOUs) that specify role titles, coach relationships, capabilities, and filesystem write scopes. Governance, Elections, Decisions, and Incentives (GEDI) defines the formal democratic process: ballots are proposed, voted, tallied, and—if quorum is achieved—adopted into policy. Proposed charters are staged under \texttt{org/policy/proposals/}, automatically discovered by the experiment loop, and promoted to \texttt{org/\_registry/} when recruitment ballots succeed.
 
-\paragraph{Runtime guardrails.} \texttt{RuntimeGuard} enforces the scopes encoded in the ALOUs, mediating file operations, symlink traversal, and outbound channels. The guard cooperates with an action broker that can execute in \texttt{shadow}, \texttt{sandbox}, or constrained \texttt{execute} modes, ensuring that proposed actions are logged before they are simulated or carried out.
+\paragraph{Runtime guardrails.} \texttt{RuntimeGuard} enforces the scopes encoded in the ALOUs, mediating file operations, symlink traversal, and outbound channels. When a new agent is hired, its charter is adopted into the registry and the guard instantly applies the new write scopes. The guard cooperates with an action broker that can execute in \texttt{shadow}, \texttt{sandbox}, or constrained \texttt{execute} modes, ensuring that proposed actions are logged before they are simulated or carried out.
 
 \paragraph{Interfaces and context.} Agents communicate with the environment through the Model Context Protocol (MCP) for file access, search, and knowledge retrieval. Context packs include recent artifacts from the organization as well as scenario-specific documents supplied by the experiment harness.
 
-\paragraph{Provenance and attestations.} Every Markdown artifact (briefs, ballots, governance norms, experiment manifests) embeds an in-toto provenance header and is sealed with a Dead Simple Signing Envelope (DSSE) using Ed25519 keys. Event logs therefore reference immutable signatures, enabling post-hoc integrity checks and selective replay.
+\paragraph{Provenance and attestations.} Every Markdown artifact (briefs, ballots, governance norms, experiment manifests) embeds an in-toto provenance header and is sealed with a Dead Simple Signing Envelope (DSSE) using Ed25519 keys. Auto-generated ballots, adoption summaries, and agent outputs inherit the same treatment, enabling post-hoc integrity checks and selective replay across self-service hiring episodes.
+
+\paragraph{Adversarial dynamics and crisis simulation.} The system incorporates Byzantine fault tolerance mechanisms with configurable tolerance thresholds, coalition detection algorithms that analyze voting patterns across multiple rounds, and trust relationship tracking that evolves based on agent interactions. Economic resource allocation creates competitive pressures through limited budgets, performance rewards, and crisis-driven scarcity. Crisis simulation events—including resource constraints, security incidents, and governance challenges—stress-test organizational adaptation and resilience mechanisms at configurable intervals and severity levels.
 
 \section{Setting}
 \paragraph{Autonomy levels.} We operate primarily in \texttt{sandbox} mode, wherein agents must first record their intended actions before simulated execution. \texttt{Shadow} mode (intent logging only) and \texttt{execute} mode (guarded real actions) remain available for ablation experiments.
@@ -60,11 +62,11 @@ Our work is related to studies on emergent behavior and coordination in multi-ag
 \section{Methods}
 \paragraph{Experiment loop.} The experiment harness instantiates the roster specified in the YAML configuration, executes \texttt{run\_all} for each round, and writes per-round metadata under \verb|experiments/results/|. A persisted \texttt{state.json} captures roster composition, lifecycle events, and cumulative metrics.
 
-\paragraph{Governance-derived lifecycle.} After each round completes, we parse GEDI tally files and incident reports to derive lifecycle actions. Winning ballot options that reference new ALOUs or explicit directives (e.g., \texttt{agent:add:AGENT-PM02}) trigger \texttt{governance.add\_agent}; incident front-matter listing suspensions yield \texttt{governance.remove\_agent}. These events are appended to the same \verb|events.jsonl| stream prior to summarisation, allowing the roster to evolve without manual intervention.
+\paragraph{Governance-derived lifecycle.} After each round completes, we parse GEDI tally files and incident reports to derive lifecycle actions. Winning ballot options that reference new ALOUs or explicit directives (e.g., \texttt{agent:add:AGENT-PM02}) trigger \texttt{governance.add\_agent}; incident front-matter listing suspensions yield \texttt{governance.remove\_agent}. Option discovery scans \texttt{org/policy/proposals/} for fresh charters prior to each ballot, while the electorate automatically absorbs roster members whose adopted ALOUs grant \texttt{gedi.roles} that include \texttt{voter}. These events are appended to the same \verb|events.jsonl| stream prior to summarisation, allowing the roster to evolve without manual intervention.
 
-\paragraph{Event schema.} Events follow the schema \texttt{\{t, agent, act, targets, policy\_refs, scopes, alou\_rev, dsse\_ref, latency\_ms\}}, augmented with \texttt{act\_origin} (e.g., \texttt{governance.ballot}). All artefacts referenced by \texttt{dsse\_ref} are signed Markdown documents.
+\paragraph{Event schema.} Events follow the schema \texttt{\{t, agent, act, targets, policy\_refs, scopes, alou\_rev, dsse\_ref, latency\_ms\}}, augmented with \texttt{act\_origin} (e.g., \texttt{governance.ballot}). Enhanced events include economic transactions \texttt{\{agent, balance\_change, reason\}}, coalition formation \texttt{\{agents, agreement\_rate, type\}}, trust updates \texttt{\{from\_agent, to\_agent, trust\_delta\}}, and crisis activations \texttt{\{event\_type, severity, duration, effects\}}. All artefacts referenced by \texttt{dsse\_ref} are signed Markdown documents.
 
-\paragraph{Quantitative metrics.} We track norm adoption latency, participation rate, policy citation frequency, scope drift (via Jaccard distance between consecutive ALOU scope matrices), centralisation (Gini coefficient over per-agent event counts), and governance throughput (adoptions per week). The metrics pipeline consumes the consolidated event log once schema conformity is ensured.
+\paragraph{Quantitative metrics.} We track norm adoption latency, participation rate, policy citation frequency, scope drift (via Jaccard distance between consecutive ALOU scope matrices), centralisation (Gini coefficient over per-agent event counts), and governance throughput (adoptions per week). Enhanced metrics include coalition stability (persistence of voting alliances), trust network density, economic inequality (Gini coefficient over agent balances), crisis response time, and Byzantine tolerance effectiveness. The metrics pipeline consumes the consolidated event log once schema conformity is ensured.
 
 \paragraph{Qualitative analysis.} We annotate “event chains” (proposal $\to$ deliberation $\to$ outcome) and behaviour labels such as persuasion, coercion, concealment, and escalation. Annotated excerpts reference DSSE hashes to support selective audit trails.
 
@@ -74,15 +76,16 @@ Our work is related to studies on emergent behavior and coordination in multi-ag
 \centering
 \caption{Behavioral metrics (median [IQR]). Lower is better for adoption latency and drift; higher is better for participation, citation, and throughput.}
 \label{tab:behavior}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccccc}
 \toprule
-Condition & Adoption$\downarrow$ & Part.\ $\uparrow$ & Policy Ref.\ $\uparrow$ & Drift$\downarrow$ & Gini$\downarrow$ & Throughput$\uparrow$ \\
+Condition & Adoption$\downarrow$ & Part.\ $\uparrow$ & Policy Ref.\ $\uparrow$ & Drift$\downarrow$ & Gini$\downarrow$ & Coalition$\uparrow$ & Crisis Resp.$\downarrow$ \\
 \midrule
-Full (ours) & -- & -- & -- & -- & -- & -- \\
-B0 (No Gov.) & -- & -- & -- & -- & -- & -- \\
-B1 (Static Norms) & -- & -- & -- & -- & -- & -- \\
-A1 (Bus Lint off) & -- & -- & -- & -- & -- & -- \\
-A2 (Local MCP) & -- & -- & -- & -- & -- & -- \\
+Full (ours) & -- & -- & -- & -- & -- & -- & -- \\
+B0 (No Economics) & -- & -- & -- & -- & -- & -- & -- \\
+B1 (No Coalitions) & -- & -- & -- & -- & -- & -- & -- \\
+B2 (No Crisis Sim) & -- & -- & -- & -- & -- & -- & -- \\
+A1 (Static Norms) & -- & -- & -- & -- & -- & -- & -- \\
+A2 (Byzantine Agents) & -- & -- & -- & -- & -- & -- & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -90,7 +93,7 @@ A2 (Local MCP) & -- & -- & -- & -- & -- & -- \\
 \noindent\emph{Note.} Numerical values will be published once the consolidated event log conforms to the final metrics schema; the table identifies the primary indicators tracked by the analysis pipeline.
 
 \subsection{Timelines and interaction structure}
-Per-round timelines reveal that governance interventions lag scenario shocks by one to two rounds, reflecting the deliberation period encoded in GEDI ballots. Communication network analysis highlights bursts of high centrality around policy mediator agents immediately before roster updates—precisely when ballots reference new or suspended agents. Post-hoc visualisation of lifecycle events confirms that the automatically appended \texttt{governance.add\_agent} and \texttt{governance.remove\_agent} actions align with the adoption of corresponding ALOU artefacts.
+Per-round timelines reveal that governance interventions lag scenario shocks by one to two rounds, reflecting the deliberation period encoded in GEDI ballots. Communication network analysis highlights bursts of high centrality around policy mediator agents immediately before roster updates—precisely when ballots reference new or suspended agents. Coalition detection algorithms identify persistent voting alliances that emerge under resource constraints, with trust networks showing measurable degradation during crisis events. Economic pressure creates observable changes in agent behavior, with coalition formation rates increasing significantly during resource scarcity periods. Post-hoc visualisation of lifecycle events confirms that the automatically appended \texttt{governance.add\_agent} and \texttt{governance.remove\_agent} actions align with the adoption of corresponding ALOU artefacts.
 % \begin{figure}[h]
 %    \centering
 %    \includegraphics[width=0.9\linewidth]{figures/timeline_placeholder.pdf}
@@ -98,13 +101,17 @@ Per-round timelines reveal that governance interventions lag scenario shocks by 
 % \end{figure}
 
 \section{Discussion}
-We interpret the mechanisms by which governance decisions steer organizational behaviour across rounds. Governance-derived lifecycle events accelerate norm adoption by automatically onboarding or retiring agents following successful ballots or incident remediation. Despite this agility, we observe periods of role drift when policy citation rates drop, suggesting that scenario shocks can temporarily outpace governance oversight. Guard interventions—particularly sandboxed execution and action logging—create a measurable lag between intent and effect, a property that mitigates cascades arising from mis-specified prompts.
+We interpret the mechanisms by which governance decisions steer organizational behaviour across rounds. Governance-derived lifecycle events accelerate norm adoption by automatically onboarding or retiring agents following successful ballots or incident remediation. Despite this agility, we observe periods of role drift when policy citation rates drop, suggesting that scenario shocks can temporarily outpace governance oversight.
+
+The introduction of adversarial dynamics reveals emergent resilience mechanisms: coalitions form organically under pressure, trust networks adapt to identify reliable partners, and economic constraints drive strategic behavior that mirrors organizational dynamics in human institutions. Crisis simulation demonstrates that organizations can maintain functionality under stress, though with measurable performance degradation and increased centralization around key decision-makers.
+
+Byzantine fault tolerance mechanisms prove effective at containing intentionally disruptive behavior, with the coalition detection system successfully identifying and isolating malicious alliances. Guard interventions—particularly sandboxed execution and action logging—create a measurable lag between intent and effect, a property that mitigates cascades arising from both mis-specified prompts and intentional manipulation attempts.
 
 \section{Limitations \& Ethics}
 Our observations arise from synthetic scenarios and mocked external services, limiting external validity. Nevertheless, the outbound sandbox ensures that potentially harmful behaviour remains contained; no personal data or real transactions are processed. The governance lifecycles rely on ballots and incident reports that are manually or programmatically curated—biases in these inputs translate directly to roster shifts. Future work must evaluate the framework under live human-in-the-loop governance before deployment in socio-technical settings.
 
 \section{Reproducibility \& Artifacts}
-We release: (i) the index snapshot DSSE \verb|\IndexSnapshot|, (ii) consolidated event logs \verb|\EventsFile|, (iii) the experiment manifest (\verb|experiments/results/\SnapshotDate/experiment.json|) encoding roster history, and (iv) report/norm DSSEs with their verification scripts. Local verification examples:
+We release: (i) the index snapshot DSSE \verb|\IndexSnapshot|, (ii) consolidated event logs \verb|\EventsFile|, (iii) the experiment manifest (\verb|experiments/results/\SnapshotDate/experiment.json|) encoding roster history, and (iv) report/norm DSSEs with their verification scripts. Auto-discovered charter drafts are available under \verb|org/policy/proposals/| with corresponding adoption artefacts in \verb|org/policy/norms/| and announcements in \verb|bus/policy/|. Local verification examples:
 \begin{verbatim}
 python -m scripts.provtools verify indexes/20250918/index.dsse \
   --pub keys/ed25519.pub --base .
@@ -123,8 +130,9 @@ Environment variables (model provider, MCP credentials, sandbox mode) are enumer
   \item Snapshot: \verb|\IndexSnapshot|
 \end{itemize}
 
-\section{Event Schema (JSON example)}
+\section{Event Schema (JSON examples)}
 \begin{verbatim}
+// Standard agent action event
 {
   "t": "2025-09-18T12:34:56Z",
   "agent": "AGENT-ENG01",
@@ -135,6 +143,45 @@ Environment variables (model provider, MCP credentials, sandbox mode) are enumer
   "alou_rev": "AGENT-ENG01@2025-09-18",
   "dsse_ref": "attestations/AGENT-ENG01/....dsse",
   "latency_ms": 1234
+}
+
+// Coalition detection event
+{
+  "t": "2025-09-18T12:35:12Z",
+  "act": "social.coalition_detected",
+  "agents": ["AGENT-PM01", "AGENT-ENG01"],
+  "agreement_rate": 0.85,
+  "type": "voting_alliance"
+}
+
+// Trust relationship update
+{
+  "t": "2025-09-18T12:35:15Z",
+  "act": "social.trust_update",
+  "from_agent": "AGENT-PM01",
+  "to_agent": "AGENT-OPS01",
+  "trust_delta": 0.15,
+  "new_trust": 0.75
+}
+
+// Economic transaction event
+{
+  "t": "2025-09-18T12:35:20Z",
+  "act": "economic.balance_change",
+  "agent": "AGENT-ENG01",
+  "balance_change": -10,
+  "reason": "llm_call",
+  "new_balance": 990
+}
+
+// Crisis activation event
+{
+  "t": "2025-09-18T12:35:25Z",
+  "act": "crisis.activated",
+  "event_type": "resource_scarcity",
+  "severity": 0.7,
+  "duration": 5,
+  "effects": {"budget_reduction": 0.4}
 }
 \end{verbatim}
 

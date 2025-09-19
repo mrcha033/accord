@@ -144,6 +144,11 @@ The guard enforces:
 3. Subsequent experiment rounds load agent configurations directly from
    registered ALOUs via `load_registered_agent_configs`, allowing the new role
    to participate without manual wiring.
+4. Enable `governance.auto_ballot.discover_proposals` to have the loop auto-
+   discover `org/policy/proposals/*.alou.md` drafts and add them to future
+   ballots without editing `run.yaml`. Use `retain_agents` to protect core
+   roles from automated removal, while low-activity hires become eligible for
+   `agent:remove:*` options once they complete probation.
 
 ## CI Workflow
 

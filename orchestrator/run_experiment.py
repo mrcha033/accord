@@ -13,6 +13,8 @@ import yaml
 
 from orchestrator.experiment_loop import (
     AutoBallotConfig,
+    CrisisConfig,
+    EconomicConfig,
     ExperimentLoop,
     LifecycleSpec,
     TimelineSpec,
@@ -35,6 +37,8 @@ class ExperimentSpec:
     timeline: TimelineSpec
     lifecycle: LifecycleSpec
     auto_ballot: AutoBallotConfig
+    economics: EconomicConfig
+    crisis_config: CrisisConfig
 
 
 DEFAULT_SPEC_PATH = Path("experiments/run.yaml")
@@ -48,6 +52,8 @@ def load_spec(path: Path) -> ExperimentSpec:
     lifecycle = LifecycleSpec.from_mapping(data.get("lifecycle"))
     governance = dict(data.get("governance", {}))
     auto_ballot = AutoBallotConfig.from_mapping(governance.get("auto_ballot"))
+    economics = EconomicConfig.from_mapping(data.get("economics"))
+    crisis_config = CrisisConfig.from_mapping(data.get("crisis_simulation"))
     return ExperimentSpec(
         seed=int(data.get("seed", 0)),
         tasks=list(data.get("tasks", [])),
@@ -59,16 +65,21 @@ def load_spec(path: Path) -> ExperimentSpec:
         timeline=timeline,
         lifecycle=lifecycle,
         auto_ballot=auto_ballot,
+        economics=economics,
+        crisis_config=crisis_config,
     )
 
 
 def _build_metadata(spec: ExperimentSpec) -> dict[str, Any]:
+    from dataclasses import asdict
     return {
         "tasks": spec.tasks,
         "agents": spec.agents,
         "governance": spec.governance,
         "context": spec.context,
         "bus": spec.bus,
+        "economics": asdict(spec.economics),
+        "crisis_simulation": asdict(spec.crisis_config),
     }
 
 
@@ -175,6 +186,8 @@ def run_experiment(
         auto_ballot=spec.auto_ballot,
         seed=spec.seed,
         spec_metadata=spec_metadata,
+        economics=spec.economics,
+        crisis_config=spec.crisis_config,
     )
     loop_result = loop.run()
 

@@ -19,7 +19,7 @@ import textwrap
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Mapping, Tuple
 
 import yaml
 
@@ -66,6 +66,18 @@ def _write_jsonl(path: Path, record: dict) -> None:
 
 def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _option_artifact(value: object) -> str | None:
+    if isinstance(value, str):
+        candidate = value.strip()
+        return candidate or None
+    if isinstance(value, Mapping):
+        for key in ("artifact", "path", "target"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return None
 
 
 def load_ballot(path: Path) -> Ballot:
@@ -308,10 +320,12 @@ def cmd_tally(args: argparse.Namespace) -> int:
             "quorum_met": quorum_met,
         },
     )
+    option_display = ballot.options.get(winner)
+    artifact_display = _option_artifact(option_display) or option_display
     body = textwrap.dedent(
         f"""# Result: {ballot.title}
 
-- **Winner:** {winner} → {ballot.options[winner]}
+- **Winner:** {winner} → {artifact_display}
 - **Rule:** {ballot.rule}
 - **Turnout:** {turnout:.2f} (quorum {ballot.quorum})
 - **Tallied:** {_utcnow()}
@@ -349,7 +363,20 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "error": "quorum not met"}))
         return 1
     winner = tally["winner"]
-    source_path = BASE_DIR / ballot.options[winner]
+    option_value = ballot.options.get(winner)
+    artifact = _option_artifact(option_value)
+    if not artifact:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": "winner option missing artifact",
+                    "option": option_value,
+                }
+            )
+        )
+        return 1
+    source_path = BASE_DIR / artifact
     adopted_path = BASE_DIR / f"org/policy/norms/{ballot.id}-adopted.md"
     materials = [
         _rel(BASE_DIR / f"org/policy/_ballots/{ballot.id}.yaml"),
@@ -372,7 +399,7 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     adopted_body = header + textwrap.dedent(
         f"""# Adopted: {ballot.title}
 
-> Source draft: `{source_path}`
+> Source draft: `{artifact}`
 
 {content}
 """

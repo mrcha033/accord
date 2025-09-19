@@ -359,3 +359,145 @@ def _relpath(base_dir: Path, path: Path) -> str:
         return str(path.resolve().relative_to(base_dir.resolve()))
     except ValueError:
         return str(path.resolve())
+
+
+def detect_voting_coalitions(
+    vote_data: dict[str, Any], history: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Detect coalitions based on voting patterns."""
+    coalitions = []
+
+    if "votes" not in vote_data:
+        return coalitions
+
+    votes = vote_data["votes"]
+    agents = list(votes.keys())
+
+    # Find agents that vote similarly
+    agreement_threshold = 0.7
+    coalition_candidates = []
+
+    for i, agent1 in enumerate(agents):
+        for j, agent2 in enumerate(agents[i+1:], i+1):
+            # Compare voting patterns across recent ballots
+            agreements = 0
+            total_comparisons = 0
+
+            # Check current vote
+            if votes[agent1] == votes[agent2]:
+                agreements += 1
+            total_comparisons += 1
+
+            # Check historical votes
+            for historical_vote in history[-5:]:  # Last 5 votes
+                if "votes" in historical_vote:
+                    hist_votes = historical_vote["votes"]
+                    if agent1 in hist_votes and agent2 in hist_votes:
+                        if hist_votes[agent1] == hist_votes[agent2]:
+                            agreements += 1
+                        total_comparisons += 1
+
+            if total_comparisons > 0:
+                agreement_rate = agreements / total_comparisons
+                if agreement_rate >= agreement_threshold:
+                    coalition_candidates.append({
+                        "agents": [agent1, agent2],
+                        "agreement_rate": agreement_rate,
+                        "type": "voting_alliance"
+                    })
+
+    # Merge overlapping coalitions
+    merged_coalitions = []
+    for candidate in coalition_candidates:
+        merged = False
+        for existing in merged_coalitions:
+            if any(agent in existing["agents"] for agent in candidate["agents"]):
+                # Merge coalitions
+                for agent in candidate["agents"]:
+                    if agent not in existing["agents"]:
+                        existing["agents"].append(agent)
+                merged = True
+                break
+
+        if not merged:
+            merged_coalitions.append(candidate)
+
+    return merged_coalitions
+
+
+def calculate_influence_metrics(
+    vote_data: dict[str, Any], coalition_data: list[dict[str, Any]]
+) -> dict[str, float]:
+    """Calculate influence metrics for each agent."""
+    influence = {}
+
+    if "votes" not in vote_data or "result" not in vote_data:
+        return influence
+
+    votes = vote_data["votes"]
+    winning_option = vote_data["result"].get("winner")
+
+    for agent, vote in votes.items():
+        # Base influence: did agent vote for winning option?
+        base_influence = 1.0 if vote == winning_option else 0.5
+
+        # Coalition bonus: is agent part of a large coalition?
+        coalition_bonus = 0.0
+        for coalition in coalition_data:
+            if agent in coalition["agents"]:
+                coalition_size = len(coalition["agents"])
+                coalition_bonus = min(0.3, coalition_size * 0.1)
+                break
+
+        influence[agent] = base_influence + coalition_bonus
+
+    return influence
+
+
+def update_trust_matrix(
+    trust_matrix: dict[str, dict[str, float]],
+    vote_data: dict[str, Any],
+    coalition_data: list[dict[str, Any]]
+) -> dict[str, dict[str, float]]:
+    """Update trust relationships based on voting behavior."""
+    if "votes" not in vote_data:
+        return trust_matrix
+
+    votes = vote_data["votes"]
+    agents = list(votes.keys())
+
+    # Initialize trust matrix if empty
+    for agent in agents:
+        if agent not in trust_matrix:
+            trust_matrix[agent] = {}
+        for other_agent in agents:
+            if other_agent not in trust_matrix[agent]:
+                trust_matrix[agent][other_agent] = 0.5  # Neutral starting point
+
+    # Update trust based on vote alignment
+    for agent1 in agents:
+        for agent2 in agents:
+            if agent1 != agent2:
+                current_trust = trust_matrix[agent1][agent2]
+
+                # Trust adjustment based on vote alignment
+                if votes[agent1] == votes[agent2]:
+                    # Voted the same way - increase trust slightly
+                    trust_adjustment = 0.05
+                else:
+                    # Voted differently - decrease trust slightly
+                    trust_adjustment = -0.02
+
+                # Coalition bonus
+                in_same_coalition = any(
+                    agent1 in coalition["agents"] and agent2 in coalition["agents"]
+                    for coalition in coalition_data
+                )
+                if in_same_coalition:
+                    trust_adjustment += 0.03
+
+                # Apply adjustment with bounds [0, 1]
+                new_trust = max(0.0, min(1.0, current_trust + trust_adjustment))
+                trust_matrix[agent1][agent2] = new_trust
+
+    return trust_matrix
