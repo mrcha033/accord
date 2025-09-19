@@ -324,6 +324,14 @@ def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict
 
     output_path = config.output_path
     snapshot_refs = _latest_index_materials(base_dir)
+    # Filter materials to only include existing files
+    existing_knowledge_refs = []
+    for ref in knowledge_refs:
+        if isinstance(ref, (str, Path)):
+            ref_path = base_dir / ref if not Path(ref).is_absolute() else Path(ref)
+            if ref_path.exists():
+                existing_knowledge_refs.append(str(ref))
+
     artifact_body = compose_document(
         artifact_path=output_path,
         agent_id=config.agent_id,
@@ -333,7 +341,7 @@ def run_agent(config: AgentConfig, base_dir: Path, *, events_path: Path) -> dict
         body=draft,
         materials=[
             str(config.prompt_path),
-            *[str(ref) for ref in knowledge_refs],
+            *existing_knowledge_refs,
             *snapshot_refs,
         ],
     )
